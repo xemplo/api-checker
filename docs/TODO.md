@@ -32,7 +32,7 @@ All tasks implicitly include unit and fixture coverage, verification of acceptan
      - The engine can accept already-resolved documents without forcing callers through CLI-specific source handling.
 
 3. **Deliver an early end-to-end CLI shell**
-  - Status: Proposed
+   - Status: Completed (2026-03-30)
   - Blockers: 1, 2
   - User Stories: 1, 4, 26, 29
   - Description: Put a usable CLI in place early so the team can run the tool after each comparison slice lands. This task should provide the basic command surface, invoke the current engine capabilities, and render a simple text result so later tasks can extend an already-runnable product instead of waiting for a final integration phase.

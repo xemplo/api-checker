@@ -20,6 +20,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\..\src\Xemplo.ApiChecker.Cli\Xemplo.ApiChecker.Cli.csproj" />
     <ProjectReference Include="..\..\src\Xemplo.ApiChecker.Core\Xemplo.ApiChecker.Core.csproj" />
   </ItemGroup>
 

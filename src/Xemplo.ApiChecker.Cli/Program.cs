@@ -1,6 +1,3 @@
-﻿using Xemplo.ApiChecker.Core;
+﻿using Xemplo.ApiChecker.Cli;
 
-var engine = new ApiComparisonEngine();
-var result = engine.Compare(ApiComparisonInput.Empty, ApiRuleProfile.Default);
-
-Console.WriteLine($"Findings: {result.Findings.Count}");
+return await CliApplication.RunAsync(args, Console.Out, Console.Error);
