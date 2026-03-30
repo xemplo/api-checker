@@ -85,8 +85,8 @@ public class ApiComparisonEngineTests
     private static async Task<ApiComparisonInput> LoadRequestBodyFixturePairAsync()
     {
         var loader = new ApiSpecificationLoader();
-        var oldPath = GetFixturePath("request-body-old.yaml");
-        var newPath = GetFixturePath("request-body-new.yaml");
+        var oldPath = GetFixturePath("request-body-old.json");
+        var newPath = GetFixturePath("request-body-new.json");
         var oldResult = await loader.LoadAsync(oldPath);
         var newResult = await loader.LoadAsync(newPath);
 

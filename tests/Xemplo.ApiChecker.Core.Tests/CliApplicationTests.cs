@@ -325,8 +325,8 @@ public class CliApplicationTests
     [Fact]
     public async Task RunAsync_WithRequestBodyFixtureInputs_ReportsBodyFindings()
     {
-        var oldPath = GetFixturePath("request-body-old.yaml");
-        var newPath = GetFixturePath("request-body-new.yaml");
+        var oldPath = GetFixturePath("request-body-old.json");
+        var newPath = GetFixturePath("request-body-new.json");
         var output = new StringWriter();
         var error = new StringWriter();
 
