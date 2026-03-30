@@ -44,7 +44,7 @@ All tasks implicitly include unit and fixture coverage, verification of acceptan
     - Later engine and configuration tasks can extend this CLI incrementally without reshaping the library boundary.
 
 4. **Build endpoint and response matching foundations**
-   - Status: Proposed
+   - Status: Completed (2026-03-30)
    - Blockers: 1, 2
    - User Stories: 5, 6, 8, 18, 19, 20, 34
    - Description: Implement the deterministic matching layer that aligns operations by exact HTTP method plus case-insensitive path template and aligns responses within matched operations by exact status code plus exact JSON media type. This is the core comparison map the rule engine will consume, including treatment of method changes as one removed endpoint plus one new endpoint.
