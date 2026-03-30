@@ -19,7 +19,7 @@ All tasks implicitly include unit and fixture coverage, verification of acceptan
      - The core result model can carry stable finding data needed by both text and JSON output.
 
 2. **Implement spec source loading and OpenAPI document parsing**
-   - Status: Proposed
+   - Status: Completed (2026-03-30)
    - Blockers: 1
    - User Stories: 1, 4, 29, 30, 31
    - Description: Add the ability to load the old and new specifications from either local paths or unauthenticated HTTP or HTTPS URLs, then parse them as OpenAPI 3.0 or 3.1 documents. This task should establish the error model for invalid inputs, unsupported Swagger/OpenAPI 2.0 documents, fetch failures, and parse failures.

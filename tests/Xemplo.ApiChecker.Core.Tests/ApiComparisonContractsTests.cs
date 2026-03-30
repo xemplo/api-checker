@@ -62,6 +62,33 @@ public class ApiComparisonContractsTests
     }
 
     [Fact]
+    public void ComparisonResult_WithoutErrors_DoesNotReportErrorFindings()
+    {
+        var result = new ApiComparisonResult(
+            new[]
+            {
+                new ApiFinding(ApiRuleId.NewOptionalInput, ApiSeverity.Warning, "optional")
+            });
+
+        Assert.False(result.HasErrorFindings);
+    }
+
+    [Fact]
+    public void EmptyComparisonResult_HasNoFindingsOrErrors()
+    {
+        Assert.Empty(ApiComparisonResult.Empty.Findings);
+        Assert.False(ApiComparisonResult.Empty.HasErrorFindings);
+    }
+
+    [Fact]
+    public void UnknownRuleSeverity_DefaultsToOff()
+    {
+        var profile = new ApiRuleProfile(new Dictionary<ApiRuleId, ApiSeverity>());
+
+        Assert.Equal(ApiSeverity.Off, profile.GetSeverity(ApiRuleId.NewEndpoint));
+    }
+
+    [Fact]
     public void Engine_ImplementsLibraryBoundaryContract()
     {
         var engine = new ApiComparisonEngine();
@@ -69,6 +96,22 @@ public class ApiComparisonContractsTests
         var result = engine.Compare(ApiComparisonInput.Empty, ApiRuleProfile.Default);
 
         Assert.Empty(result.Findings);
+    }
+
+    [Fact]
+    public void Engine_ThrowsForNullInput()
+    {
+        var engine = new ApiComparisonEngine();
+
+        Assert.Throws<ArgumentNullException>(() => engine.Compare(null!, ApiRuleProfile.Default));
+    }
+
+    [Fact]
+    public void Engine_ThrowsForNullRuleProfile()
+    {
+        var engine = new ApiComparisonEngine();
+
+        Assert.Throws<ArgumentNullException>(() => engine.Compare(ApiComparisonInput.Empty, null!));
     }
 
     [Fact]
