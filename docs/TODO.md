@@ -56,7 +56,7 @@ All tasks implicitly include unit and fixture coverage, verification of acceptan
      - Unmatched operations and unmatched response codes are available to downstream rule evaluation without heuristic rematching.
 
 5. **Add conservative JSON schema analysis primitives**
-   - Status: Proposed
+   - Status: Completed (2026-03-31)
    - Blockers: 1, 2
    - User Stories: 7, 8, 28, 33, 35, 36
    - Description: Create the schema inspection utilities that later rule tasks will reuse to reason about JSON object properties, requiredness, nullability, defaults, enum values, and ambiguity. This task should codify the product’s conservative evaluation stance so uncertain cases are identified explicitly instead of producing speculative breaking-change findings.
