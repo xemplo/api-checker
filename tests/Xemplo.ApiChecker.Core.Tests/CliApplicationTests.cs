@@ -303,4 +303,29 @@ public class CliApplicationTests
         Assert.DoesNotContain("[]", output.ToString());
         Assert.Equal(string.Empty, error.ToString());
     }
+
+    [Fact]
+    public async Task RunAsync_WithRequestBodyFixtureInputs_ReportsBodyFindings()
+    {
+        var oldPath = GetFixturePath("request-body-old.yaml");
+        var newPath = GetFixturePath("request-body-new.yaml");
+        var output = new StringWriter();
+        var error = new StringWriter();
+
+        var exitCode = await CliApplication.RunAsync(["--old", oldPath, "--new", newPath], output, error);
+
+        Assert.Equal(1, exitCode);
+        Assert.Contains("NewRequiredInput", output.ToString());
+        Assert.Contains("NewOptionalInput", output.ToString());
+        Assert.Contains("RemovedInput", output.ToString());
+        Assert.Contains("$.pet.age", output.ToString());
+        Assert.Contains("$.pet.tags[].code", output.ToString());
+        Assert.Contains("$.pet.legacy", output.ToString());
+        Assert.Equal(string.Empty, error.ToString());
+    }
+
+    private static string GetFixturePath(string fileName)
+    {
+        return Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "fixtures", fileName));
+    }
 }

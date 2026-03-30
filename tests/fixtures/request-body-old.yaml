@@ -1,0 +1,39 @@
+openapi: 3.1.0
+info:
+  title: Request Body Old
+  version: 1.0.0
+paths:
+  /pets:
+    post:
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - pet
+              properties:
+                pet:
+                  type: object
+                  required:
+                    - name
+                    - legacy
+                  properties:
+                    name:
+                      type: string
+                    legacy:
+                      type: string
+                    serverAssigned:
+                      type: string
+                      readOnly: true
+                    tags:
+                      type: array
+                      items:
+                        type: object
+                        properties:
+                          label:
+                            type: string
+      responses:
+        '204':
+          description: accepted

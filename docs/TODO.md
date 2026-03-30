@@ -69,7 +69,7 @@ All tasks implicitly include unit and fixture coverage, verification of acceptan
      - Non-JSON bodies and unsupported parameter categories are excluded from the analysis surface.
 
 6. **Implement request body compatibility rules**
-   - Status: Proposed
+   - Status: Completed (2026-03-31)
    - Blockers: 3, 4, 5
    - User Stories: 9, 10, 11, 28, 32, 33, 35, 36
    - Description: Evaluate matched operations for request-side compatibility changes in JSON request bodies only, and wire those findings into the runnable CLI. This task covers `NewRequiredInput`, `NewOptionalInput`, and `RemovedInput`, creating the first partial working solution where the tool can be run end-to-end for body-rule scenarios.

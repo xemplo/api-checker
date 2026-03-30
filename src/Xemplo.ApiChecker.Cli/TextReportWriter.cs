@@ -23,7 +23,8 @@ public static class TextReportWriter
         foreach (var finding in result.Findings)
         {
             var location = finding.Operation is null ? string.Empty : $" [{finding.Operation.Method} {finding.Operation.PathTemplate}]";
-            await output.WriteLineAsync($"- {finding.Severity}: {finding.RuleId}{location} {finding.Message}");
+            var schemaPath = string.IsNullOrWhiteSpace(finding.SchemaPath) ? string.Empty : $" ({finding.SchemaPath})";
+            await output.WriteLineAsync($"- {finding.Severity}: {finding.RuleId}{location}{schemaPath} {finding.Message}");
         }
     }
 }
