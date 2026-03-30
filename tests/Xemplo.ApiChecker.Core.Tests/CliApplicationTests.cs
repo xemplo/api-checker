@@ -342,6 +342,27 @@ public class CliApplicationTests
         Assert.Equal(string.Empty, error.ToString());
     }
 
+    [Fact]
+    public async Task RunAsync_WithQueryParameterFixtureInputs_ReportsQueryFindings()
+    {
+        var oldPath = GetFixturePath("query-params-old.json");
+        var newPath = GetFixturePath("query-params-new.json");
+        var output = new StringWriter();
+        var error = new StringWriter();
+
+        var exitCode = await CliApplication.RunAsync(["--old", oldPath, "--new", newPath], output, error);
+
+        Assert.Equal(1, exitCode);
+        Assert.Contains("NewRequiredQueryParam", output.ToString());
+        Assert.Contains("NewOptionalQueryParam", output.ToString());
+        Assert.Contains("$query.filter", output.ToString());
+        Assert.Contains("$query.includeDetails", output.ToString());
+        Assert.Contains("$query.limit", output.ToString());
+        Assert.DoesNotContain("traceId", output.ToString());
+        Assert.DoesNotContain("polymorphic", output.ToString());
+        Assert.Equal(string.Empty, error.ToString());
+    }
+
     private static string GetFixturePath(string fileName)
     {
         return Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "fixtures", fileName));

@@ -81,7 +81,7 @@ All tasks implicitly include unit and fixture coverage, verification of acceptan
      - After this task, the tool can be run end-to-end for supported body-rule comparisons.
 
 7. **Implement query parameter compatibility rules**
-   - Status: Proposed
+   - Status: Completed (2026-03-31)
    - Blockers: 3, 4, 5
    - User Stories: 12, 13, 28, 32, 33, 35, 36
    - Description: Evaluate matched operations for query parameter compatibility changes only, and extend the runnable CLI so those findings appear in normal tool execution. This task covers `NewRequiredQueryParam` and `NewOptionalQueryParam` while keeping path, header, and cookie parameters out of scope for v1.

@@ -82,11 +82,88 @@ public class ApiComparisonEngineTests
         Assert.Equal("$.serverAssigned", finding.SchemaPath);
     }
 
+    [Fact]
+    public async Task Compare_QueryParameterFixtures_ProducesExpectedFindings()
+    {
+        var engine = new ApiComparisonEngine();
+        var input = await LoadFixturePairAsync("query-params-old.json", "query-params-new.json");
+
+        var result = engine.Compare(input, ApiRuleProfile.Default);
+
+        Assert.Collection(
+            result.Findings,
+            finding =>
+            {
+                Assert.Equal(ApiRuleId.NewRequiredQueryParam, finding.RuleId);
+                Assert.Equal(ApiSeverity.Error, finding.Severity);
+                Assert.Equal("$query.filter", finding.SchemaPath);
+            },
+            finding =>
+            {
+                Assert.Equal(ApiRuleId.NewOptionalQueryParam, finding.RuleId);
+                Assert.Equal(ApiSeverity.Warning, finding.Severity);
+                Assert.Equal("$query.includeDetails", finding.SchemaPath);
+            },
+            finding =>
+            {
+                Assert.Equal(ApiRuleId.NewOptionalQueryParam, finding.RuleId);
+                Assert.Equal(ApiSeverity.Warning, finding.Severity);
+                Assert.Equal("$query.limit", finding.SchemaPath);
+            });
+    }
+
+    [Fact]
+    public void Compare_QueryParameters_UseOperationOverridesOverPathItemParameters()
+    {
+        var engine = new ApiComparisonEngine();
+        var oldInput = CreateSpecification(CreateGetOperation(), pathItemParameters: [], method: System.Net.Http.HttpMethod.Get);
+        var newInput = CreateSpecification(
+            CreateGetOperation(operationParameters:
+            [
+                CreateQueryParameter("filter", required: false, schema: CreateScalarSchema())
+            ]),
+            pathItemParameters:
+            [
+                CreateQueryParameter("filter", required: true, schema: CreateScalarSchema())
+            ],
+            method: System.Net.Http.HttpMethod.Get);
+
+        var result = engine.Compare(new ApiComparisonInput(oldInput, newInput), ApiRuleProfile.Default);
+
+        var finding = Assert.Single(result.Findings);
+        Assert.Equal(ApiRuleId.NewOptionalQueryParam, finding.RuleId);
+        Assert.Equal("$query.filter", finding.SchemaPath);
+    }
+
+    [Fact]
+    public void Compare_QueryParameters_IgnoresNonQueryAndAmbiguousRequiredParameters()
+    {
+        var engine = new ApiComparisonEngine();
+        var oldSpecification = CreateSpecification(CreateGetOperation(), pathItemParameters: [], method: System.Net.Http.HttpMethod.Get);
+        var newSpecification = CreateSpecification(
+            CreateGetOperation(operationParameters:
+            [
+                CreateHeaderParameter("traceId", required: true, schema: CreateScalarSchema()),
+                CreateQueryParameter("polymorphic", required: true, schema: CreateOneOfScalarSchema())
+            ]),
+            pathItemParameters: [],
+            method: System.Net.Http.HttpMethod.Get);
+
+        var result = engine.Compare(new ApiComparisonInput(oldSpecification, newSpecification), ApiRuleProfile.Default);
+
+        Assert.Empty(result.Findings);
+    }
+
     private static async Task<ApiComparisonInput> LoadRequestBodyFixturePairAsync()
     {
+        return await LoadFixturePairAsync("request-body-old.json", "request-body-new.json");
+    }
+
+    private static async Task<ApiComparisonInput> LoadFixturePairAsync(string oldFileName, string newFileName)
+    {
         var loader = new ApiSpecificationLoader();
-        var oldPath = GetFixturePath("request-body-old.json");
-        var newPath = GetFixturePath("request-body-new.json");
+        var oldPath = GetFixturePath(oldFileName);
+        var newPath = GetFixturePath(newFileName);
         var oldResult = await loader.LoadAsync(oldPath);
         var newResult = await loader.LoadAsync(newPath);
 
@@ -101,10 +178,16 @@ public class ApiComparisonEngineTests
         return Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "fixtures", fileName));
     }
 
-    private static ApiSpecificationDocument CreateSpecification(OpenApiOperation operation)
+    private static ApiSpecificationDocument CreateSpecification(
+        OpenApiOperation operation,
+        IReadOnlyList<Microsoft.OpenApi.Models.Interfaces.IOpenApiParameter>? pathItemParameters = null,
+        System.Net.Http.HttpMethod? method = null)
     {
-        var pathItem = new OpenApiPathItem();
-        pathItem.AddOperation(System.Net.Http.HttpMethod.Post, operation);
+        var pathItem = new OpenApiPathItem
+        {
+            Parameters = pathItemParameters is null ? [] : [.. pathItemParameters]
+        };
+        pathItem.AddOperation(method ?? System.Net.Http.HttpMethod.Post, operation);
 
         return new ApiSpecificationDocument(new OpenApiDocument
         {
@@ -128,6 +211,19 @@ public class ApiComparisonEngineTests
                     ["application/json"] = new() { Schema = requestSchema }
                 }
             },
+            Responses = new OpenApiResponses
+            {
+                ["200"] = new OpenApiResponse { Description = "ok" }
+            }
+        };
+    }
+
+    private static OpenApiOperation CreateGetOperation(
+        IReadOnlyList<Microsoft.OpenApi.Models.Interfaces.IOpenApiParameter>? operationParameters = null)
+    {
+        return new OpenApiOperation
+        {
+            Parameters = operationParameters is null ? [] : [.. operationParameters],
             Responses = new OpenApiResponses
             {
                 ["200"] = new OpenApiResponse { Description = "ok" }
@@ -161,6 +257,37 @@ public class ApiComparisonEngineTests
         {
             ReadOnly = readOnly,
             Type = JsonSchemaType.String
+        };
+    }
+
+    private static OpenApiSchema CreateOneOfScalarSchema()
+    {
+        var schema = new OpenApiSchema();
+        schema.OneOf ??= [];
+        schema.OneOf.Add(new OpenApiSchema { Type = JsonSchemaType.String });
+        schema.OneOf.Add(new OpenApiSchema { Type = JsonSchemaType.Integer });
+        return schema;
+    }
+
+    private static OpenApiParameter CreateQueryParameter(string name, bool required, OpenApiSchema? schema = null)
+    {
+        return new OpenApiParameter
+        {
+            Name = name,
+            In = ParameterLocation.Query,
+            Required = required,
+            Schema = schema
+        };
+    }
+
+    private static OpenApiParameter CreateHeaderParameter(string name, bool required, OpenApiSchema? schema = null)
+    {
+        return new OpenApiParameter
+        {
+            Name = name,
+            In = ParameterLocation.Header,
+            Required = required,
+            Schema = schema
         };
     }
 }
