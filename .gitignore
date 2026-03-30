@@ -1,0 +1,34 @@
+# Build output
+[Bb]in/
+[Oo]bj/
+out/
+
+# Visual Studio workspace state
+.vs/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# Rider / ReSharper
+.idea/
+_ReSharper*/
+*.DotSettings.user
+
+# Test artifacts
+TestResults/
+*.trx
+*.coverage
+*.coveragexml
+
+# NuGet
+packages/
+*.nupkg
+*.snupkg
+
+# Logs and local tooling artifacts
+*.log
+*.tmp
+
+# Dotnet tool and build cache folders
+.artifacts/

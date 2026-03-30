@@ -7,7 +7,7 @@ All tasks implicitly include unit and fixture coverage, verification of acceptan
 ## Proposed Tasks
 
 1. **Create the reusable solution skeleton**
-   - Status: Proposed
+   - Status: Completed (2026-03-30)
    - Blockers: None
    - User Stories: 1, 30, 31
     - Description: Create the .NET solution structure for a reusable comparison library, a thin CLI entrypoint, and a test project. All solution, project, assembly, and namespace names created in this task should use the `Xemplo.` prefix so the tool sits under a single company namespace. Define the core domain contracts for findings, rule identifiers, severities, operation identities, comparison inputs, and comparison results so later tasks can build on a stable engine boundary without leaking CLI concepts into the library.

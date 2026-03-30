@@ -1,0 +1,9 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Xemplo.ApiChecker.Cli/Xemplo.ApiChecker.Cli.csproj" />
+    <Project Path="src/Xemplo.ApiChecker.Core/Xemplo.ApiChecker.Core.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Xemplo.ApiChecker.Core.Tests/Xemplo.ApiChecker.Core.Tests.csproj" />
+  </Folder>
+</Solution>
