@@ -52,7 +52,8 @@ public sealed class ApiComparisonEngine : IApiComparisonEngine
                 continue;
             }
 
-            if (oldNodes.ContainsKey(newNode.SchemaPath))
+            if (oldNodes.TryGetValue(newNode.SchemaPath, out var oldNode)
+                && oldNode.Usage != ApiSchemaUsage.Excluded)
             {
                 continue;
             }

@@ -46,6 +46,24 @@ public class CliApplicationTests
     }
 
     [Fact]
+    public void Parse_WithDuplicateOldArgument_ReturnsFailure()
+    {
+        var result = CliArgumentParser.Parse(["--old", "old.json", "--old", "other.json", "--new", "new.json"]);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal("Duplicate argument '--old'.", result.ErrorMessage);
+    }
+
+    [Fact]
+    public void Parse_WithDuplicateNewArgument_ReturnsFailure()
+    {
+        var result = CliArgumentParser.Parse(["--old", "old.json", "--new", "new.json", "--new", "other.json"]);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal("Duplicate argument '--new'.", result.ErrorMessage);
+    }
+
+    [Fact]
     public async Task RunAsync_WithValidInputs_LoadsSpecsAndPrintsReadableResult()
     {
         var loader = Substitute.For<IApiSpecificationLoader>();

@@ -16,6 +16,11 @@ public static class CliArgumentParser
             switch (arg)
             {
                 case "--old":
+                    if (!string.IsNullOrWhiteSpace(oldSource))
+                    {
+                        return CliParseResult.Fail("Duplicate argument '--old'.");
+                    }
+
                     if (!TryReadValue(args, ref index, out oldSource))
                     {
                         return CliParseResult.Fail("Missing value for --old.");
@@ -24,6 +29,11 @@ public static class CliArgumentParser
                     break;
 
                 case "--new":
+                    if (!string.IsNullOrWhiteSpace(newSource))
+                    {
+                        return CliParseResult.Fail("Duplicate argument '--new'.");
+                    }
+
                     if (!TryReadValue(args, ref index, out newSource))
                     {
                         return CliParseResult.Fail("Missing value for --new.");
