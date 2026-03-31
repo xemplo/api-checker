@@ -361,6 +361,30 @@ public class ApiSpecificationLoaderTests
     }
 
     [Fact]
+    public async Task LoadAsync_MissingInternalReference_ReturnsMissingInternalReferenceFailure()
+    {
+        var path = Path.GetTempFileName();
+        await File.WriteAllTextAsync(path, MissingInternalReferenceJson);
+
+        try
+        {
+            var loader = new ApiSpecificationLoader();
+
+            var result = await loader.LoadAsync(path);
+
+            Assert.False(result.IsSuccess);
+            Assert.Contains(result.Failures, failure => failure.Kind == ApiSpecificationLoadFailureKind.MissingInternalReferenceTarget);
+            var failure = Assert.Single(result.Failures, failure => failure.Kind == ApiSpecificationLoadFailureKind.MissingInternalReferenceTarget);
+            Assert.Contains("#/components/schemas/MissingPet", failure.Message);
+            Assert.Equal("#/components/schemas/MissingPet", failure.HighlightedSubject);
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    [Fact]
     public async Task LoadAsync_DuplicateOperationIds_ReturnsDuplicateOperationIdFailure()
     {
         var path = Path.GetTempFileName();
@@ -398,9 +422,10 @@ public class ApiSpecificationLoaderTests
             var result = await loader.LoadAsync(path);
 
             Assert.False(result.IsSuccess);
-            Assert.Equal(2, result.Failures.Count);
+            Assert.Equal(3, result.Failures.Count);
             Assert.Contains(result.Failures, failure => failure.Kind == ApiSpecificationLoadFailureKind.ExternalReferencesNotSupported);
             Assert.Contains(result.Failures, failure => failure.Kind == ApiSpecificationLoadFailureKind.DuplicateOperationId);
+            Assert.Contains(result.Failures, failure => failure.Kind == ApiSpecificationLoadFailureKind.MissingInternalReferenceTarget);
         }
         finally
         {
@@ -478,7 +503,7 @@ public class ApiSpecificationLoaderTests
             private const string MultiValidationIssueJson = "{" +
                 "\"openapi\":\"3.0.3\"," +
                 "\"info\":{\"title\":\"Pets\",\"version\":\"1.0.0\"}," +
-                "\"paths\":{\"/pets\":{\"get\":{\"operationId\":\"listPets\",\"responses\":{\"200\":{\"description\":\"ok\",\"content\":{\"application/json\":{\"schema\":{\"$ref\":\"./schemas/pet.json#/Pet\"}}}}}}},\"/pets/search\":{\"post\":{\"operationId\":\"listPets\",\"responses\":{\"200\":{\"description\":\"ok\"}}}}}" +
+                "\"paths\":{\"/pets\":{\"get\":{\"operationId\":\"listPets\",\"responses\":{\"200\":{\"description\":\"ok\",\"content\":{\"application/json\":{\"schema\":{\"$ref\":\"./schemas/pet.json#/Pet\"}}}}}}},\"/pets/search\":{\"post\":{\"operationId\":\"listPets\",\"responses\":{\"200\":{\"description\":\"ok\",\"content\":{\"application/json\":{\"schema\":{\"$ref\":\"#/components/schemas/MissingPet\"}}}}}}}}" +
                 "}";
 
         private const string MissingOpenApiVersionJson = """
@@ -547,6 +572,41 @@ public class ApiSpecificationLoaderTests
                                             "application/json": {
                                                 "schema": {
                                                     "$ref": "#/components/schemas/Pet"
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "components": {
+                        "schemas": {
+                            "Pet": {
+                                "type": "object"
+                            }
+                        }
+                    }
+                }
+                """;
+
+        private const string MissingInternalReferenceJson = """
+                {
+                    "openapi": "3.0.3",
+                    "info": {
+                        "title": "Pets",
+                        "version": "1.0.0"
+                    },
+                    "paths": {
+                        "/pets": {
+                            "get": {
+                                "responses": {
+                                    "200": {
+                                        "description": "ok",
+                                        "content": {
+                                            "application/json": {
+                                                "schema": {
+                                                    "$ref": "#/components/schemas/MissingPet"
                                                 }
                                             }
                                         }

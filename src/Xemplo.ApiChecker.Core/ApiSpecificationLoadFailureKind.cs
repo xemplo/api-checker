@@ -9,5 +9,6 @@ public enum ApiSpecificationLoadFailureKind
     ParseFailed,
     UnsupportedSpecificationVersion,
     ExternalReferencesNotSupported,
-    DuplicateOperationId
+    DuplicateOperationId,
+    MissingInternalReferenceTarget
 }

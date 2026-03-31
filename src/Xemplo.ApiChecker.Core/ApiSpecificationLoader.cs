@@ -39,6 +39,7 @@ public sealed class ApiSpecificationLoader : IApiSpecificationLoader
             var failures = new List<ApiSpecificationLoadFailure>();
 
             failures.AddRange(GetExternalReferenceFailures(jsonNode, source));
+            failures.AddRange(GetMissingInternalReferenceFailures(jsonNode, source));
 
             var versionResult = TryGetSpecificationVersion(jsonNode);
             if (versionResult.Kind is not null)
@@ -224,6 +225,13 @@ public sealed class ApiSpecificationLoader : IApiSpecificationLoader
         return failures;
     }
 
+    private static IReadOnlyList<ApiSpecificationLoadFailure> GetMissingInternalReferenceFailures(JsonNode jsonNode, string source)
+    {
+        var failures = new List<ApiSpecificationLoadFailure>();
+        CollectMissingInternalReferenceFailures(jsonNode, jsonNode, source, "$", failures);
+        return failures;
+    }
+
     private static string ToHttpMethod(HttpMethod operationType)
     {
         return operationType.Method.ToUpperInvariant();
@@ -275,45 +283,96 @@ public sealed class ApiSpecificationLoader : IApiSpecificationLoader
         }
     }
 
-    private static string FormatJsonPathSegment(string propertyName)
-    {
-        return $"'{propertyName.Replace("'", "\\'", StringComparison.Ordinal)}'";
-    }
-
-    private static bool ContainsExternalReference(JsonNode jsonNode)
+    private static void CollectMissingInternalReferenceFailures(
+        JsonNode rootNode,
+        JsonNode jsonNode,
+        string source,
+        string path,
+        List<ApiSpecificationLoadFailure> failures)
     {
         if (jsonNode is JsonObject jsonObject)
         {
             foreach (var property in jsonObject)
             {
+                var propertyPath = $"{path}[{FormatJsonPathSegment(property.Key)}]";
+
                 if (property.Key.Equals("$ref", StringComparison.Ordinal)
                     && property.Value?.GetValue<string>() is { } reference
-                    && !reference.StartsWith("#", StringComparison.Ordinal))
+                    && reference.StartsWith("#", StringComparison.Ordinal)
+                    && !InternalReferenceExists(rootNode, reference))
                 {
-                    return true;
+                    failures.Add(
+                        new ApiSpecificationLoadFailure(
+                            ApiSpecificationLoadFailureKind.MissingInternalReferenceTarget,
+                            $"Internal $ref target '{reference}' does not exist at {propertyPath}.",
+                            source,
+                            reference));
                 }
 
-                if (property.Value is not null && ContainsExternalReference(property.Value))
+                if (property.Value is not null)
                 {
-                    return true;
+                    CollectMissingInternalReferenceFailures(rootNode, property.Value, source, propertyPath, failures);
                 }
             }
 
-            return false;
+            return;
         }
 
         if (jsonNode is JsonArray jsonArray)
         {
-            foreach (var child in jsonArray)
+            for (var index = 0; index < jsonArray.Count; index++)
             {
-                if (child is not null && ContainsExternalReference(child))
+                var child = jsonArray[index];
+                if (child is not null)
                 {
-                    return true;
+                    CollectMissingInternalReferenceFailures(rootNode, child, source, $"{path}[{index}]", failures);
                 }
             }
         }
+    }
 
-        return false;
+    private static bool InternalReferenceExists(JsonNode rootNode, string reference)
+    {
+        if (reference.Equals("#", StringComparison.Ordinal))
+        {
+            return true;
+        }
+
+        if (!reference.StartsWith("#/", StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        JsonNode? currentNode = rootNode;
+        foreach (var rawSegment in reference[2..].Split('/', StringSplitOptions.None))
+        {
+            var segment = DecodeJsonPointerSegment(rawSegment);
+
+            currentNode = currentNode switch
+            {
+                JsonObject currentObject when currentObject.TryGetPropertyValue(segment, out var childNode) => childNode,
+                JsonArray currentArray when int.TryParse(segment, out var index) && index >= 0 && index < currentArray.Count => currentArray[index],
+                _ => null
+            };
+
+            if (currentNode is null)
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private static string DecodeJsonPointerSegment(string segment)
+    {
+        return segment.Replace("~1", "/", StringComparison.Ordinal)
+            .Replace("~0", "~", StringComparison.Ordinal);
+    }
+
+    private static string FormatJsonPathSegment(string propertyName)
+    {
+        return $"'{propertyName.Replace("'", "\\'", StringComparison.Ordinal)}'";
     }
 
     private async Task<(string? Content, ApiSpecificationLoadFailure? Failure)> ReadSourceContentAsync(

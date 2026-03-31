@@ -564,6 +564,33 @@ public class CliApplicationTests
     }
 
     [Fact]
+    public async Task RunAsync_WithMissingInternalReference_ColorsMissingReferenceTarget()
+    {
+        var oldPath = Path.GetTempFileName();
+        var newPath = Path.GetTempFileName();
+        var output = new StringWriter();
+        var error = new StringWriter();
+
+        await File.WriteAllTextAsync(oldPath, "{\"openapi\":\"3.0.3\",\"info\":{\"title\":\"Old\",\"version\":\"1.0.0\"},\"paths\":{}}");
+        await File.WriteAllTextAsync(newPath, "{\"openapi\":\"3.0.3\",\"info\":{\"title\":\"New\",\"version\":\"1.0.0\"},\"paths\":{\"/pets\":{\"get\":{\"responses\":{\"200\":{\"description\":\"ok\",\"content\":{\"application/json\":{\"schema\":{\"$ref\":\"#/components/schemas/MissingPet\"}}}}}}}},\"components\":{\"schemas\":{\"Pet\":{\"type\":\"object\"}}}}");
+
+        try
+        {
+            var exitCode = await CliApplication.RunAsync(["--old", oldPath, "--new", newPath], output, error);
+
+            Assert.Equal(2, exitCode);
+            Assert.Equal(string.Empty, output.ToString());
+            Assert.Contains("Failed to load new specification", error.ToString());
+            Assert.Contains("Internal $ref target '\u001b[38;5;208m#/components/schemas/MissingPet\u001b[0m' does not exist", error.ToString());
+        }
+        finally
+        {
+            File.Delete(oldPath);
+            File.Delete(newPath);
+        }
+    }
+
+    [Fact]
     public async Task RunAsync_WhenEngineThrows_ReturnsRuntimeFailure()
     {
         var loader = Substitute.For<IApiSpecificationLoader>();
