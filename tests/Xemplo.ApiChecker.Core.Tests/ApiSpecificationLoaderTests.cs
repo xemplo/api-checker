@@ -362,6 +362,31 @@ public class ApiSpecificationLoaderTests
     }
 
     [Fact]
+    public async Task LoadAsync_DuplicateOperationIds_ReturnsDuplicateOperationIdFailure()
+    {
+        var path = Path.GetTempFileName();
+        await File.WriteAllTextAsync(path, DuplicateOperationIdJson);
+
+        try
+        {
+            var loader = new ApiSpecificationLoader();
+
+            var result = await loader.LoadAsync(path);
+
+            Assert.False(result.IsSuccess);
+            Assert.NotNull(result.Failure);
+            Assert.Equal(ApiSpecificationLoadFailureKind.DuplicateOperationId, result.Failure!.Kind);
+            Assert.Contains("listPets", result.Failure.Message);
+            Assert.Contains("GET /pets", result.Failure.Message);
+            Assert.Contains("POST /pets/search", result.Failure.Message);
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    [Fact]
     public async Task LoadAsync_UnsupportedScheme_ReturnsInvalidSource()
     {
         var loader = new ApiSpecificationLoader();
@@ -421,6 +446,12 @@ public class ApiSpecificationLoaderTests
         private const string InvalidTopLevelJson = """
                 []
                 """;
+
+            private const string DuplicateOperationIdJson = "{" +
+                "\"openapi\":\"3.0.3\"," +
+                "\"info\":{\"title\":\"Pets\",\"version\":\"1.0.0\"}," +
+                "\"paths\":{\"/pets\":{\"get\":{\"operationId\":\"listPets\",\"responses\":{\"200\":{\"description\":\"ok\"}}}},\"/pets/search\":{\"post\":{\"operationId\":\"listPets\",\"responses\":{\"200\":{\"description\":\"ok\"}}}}}" +
+                "}";
 
         private const string MissingOpenApiVersionJson = """
                 {

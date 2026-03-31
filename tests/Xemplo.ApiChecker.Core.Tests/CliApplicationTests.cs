@@ -458,6 +458,34 @@ public class CliApplicationTests
     }
 
     [Fact]
+    public async Task RunAsync_WithDuplicateOperationIdsInNewSpec_ReturnsLoadFailure()
+    {
+        var oldPath = Path.GetTempFileName();
+        var newPath = Path.GetTempFileName();
+        var output = new StringWriter();
+        var error = new StringWriter();
+
+        await File.WriteAllTextAsync(oldPath, "{\"openapi\":\"3.0.3\",\"info\":{\"title\":\"Old\",\"version\":\"1.0.0\"},\"paths\":{}}");
+        await File.WriteAllTextAsync(newPath, "{\"openapi\":\"3.0.3\",\"info\":{\"title\":\"New\",\"version\":\"1.0.0\"},\"paths\":{\"/pets\":{\"get\":{\"operationId\":\"listPets\",\"responses\":{\"200\":{\"description\":\"ok\"}}}},\"/pets/search\":{\"post\":{\"operationId\":\"listPets\",\"responses\":{\"200\":{\"description\":\"ok\"}}}}}}");
+
+        try
+        {
+            var exitCode = await CliApplication.RunAsync(["--old", oldPath, "--new", newPath], output, error);
+
+            Assert.Equal(2, exitCode);
+            Assert.Equal(string.Empty, output.ToString());
+            Assert.Contains("Failed to load new specification", error.ToString());
+            Assert.Contains("Duplicate operationId values", error.ToString());
+            Assert.Contains("listPets", error.ToString());
+        }
+        finally
+        {
+            File.Delete(oldPath);
+            File.Delete(newPath);
+        }
+    }
+
+    [Fact]
     public async Task RunAsync_WhenEngineThrows_ReturnsRuntimeFailure()
     {
         var loader = Substitute.For<IApiSpecificationLoader>();

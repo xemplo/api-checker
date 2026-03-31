@@ -81,6 +81,12 @@ public sealed class ApiSpecificationLoader : IApiSpecificationLoader
                         source));
             }
 
+            var duplicateOperationIdFailure = TryGetDuplicateOperationIdFailure(readResult.Document, source);
+            if (duplicateOperationIdFailure is not null)
+            {
+                return ApiSpecificationLoadResult.Fail(duplicateOperationIdFailure);
+            }
+
             return ApiSpecificationLoadResult.Success(new ApiSpecificationDocument(readResult.Document, source));
         }
         catch (Exception exception)
@@ -168,6 +174,38 @@ public sealed class ApiSpecificationLoader : IApiSpecificationLoader
     {
         return version.StartsWith("3.0", StringComparison.Ordinal)
             || version.StartsWith("3.1", StringComparison.Ordinal);
+    }
+
+    private static ApiSpecificationLoadFailure? TryGetDuplicateOperationIdFailure(OpenApiDocument document, string source)
+    {
+        var duplicateGroups = document.Paths
+            .SelectMany(static path => path.Value?.Operations?.Select(operation => new
+            {
+                OperationId = operation.Value?.OperationId,
+                Method = ToHttpMethod(operation.Key),
+                Path = path.Key
+            }) ?? [])
+            .Where(static operation => !string.IsNullOrWhiteSpace(operation.OperationId))
+            .GroupBy(static operation => operation.OperationId!, StringComparer.Ordinal)
+            .Where(static group => group.Skip(1).Any())
+            .OrderBy(static group => group.Key, StringComparer.Ordinal)
+            .Select(static group => $"'{group.Key}' at {string.Join(", ", group.OrderBy(static operation => operation.Path, StringComparer.OrdinalIgnoreCase).ThenBy(static operation => operation.Method, StringComparer.Ordinal).Select(static operation => $"{operation.Method} {operation.Path}"))}")
+            .ToArray();
+
+        if (duplicateGroups.Length == 0)
+        {
+            return null;
+        }
+
+        return new ApiSpecificationLoadFailure(
+            ApiSpecificationLoadFailureKind.DuplicateOperationId,
+            $"Duplicate operationId values are not supported within a specification: {string.Join("; ", duplicateGroups)}.",
+            source);
+    }
+
+    private static string ToHttpMethod(HttpMethod operationType)
+    {
+        return operationType.Method.ToUpperInvariant();
     }
 
     private static bool ContainsExternalReference(JsonNode jsonNode)

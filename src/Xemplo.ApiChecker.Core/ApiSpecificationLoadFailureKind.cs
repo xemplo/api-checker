@@ -8,5 +8,6 @@ public enum ApiSpecificationLoadFailureKind
     SourceFetchFailed,
     ParseFailed,
     UnsupportedSpecificationVersion,
-    ExternalReferencesNotSupported
+    ExternalReferencesNotSupported,
+    DuplicateOperationId
 }
