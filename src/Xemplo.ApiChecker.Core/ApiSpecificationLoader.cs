@@ -36,20 +36,14 @@ public sealed class ApiSpecificationLoader : IApiSpecificationLoader
         try
         {
             var jsonNode = ParseAsJsonNode(content);
+            var failures = new List<ApiSpecificationLoadFailure>();
 
-            if (ContainsExternalReference(jsonNode))
-            {
-                return ApiSpecificationLoadResult.Fail(
-                    new ApiSpecificationLoadFailure(
-                        ApiSpecificationLoadFailureKind.ExternalReferencesNotSupported,
-                        "External $ref targets are not supported in v1.",
-                        source));
-            }
+            failures.AddRange(GetExternalReferenceFailures(jsonNode, source));
 
             var versionResult = TryGetSpecificationVersion(jsonNode);
             if (versionResult.Kind is not null)
             {
-                return ApiSpecificationLoadResult.Fail(
+                failures.Add(
                     new ApiSpecificationLoadFailure(
                         versionResult.Kind.Value,
                         versionResult.Message!,
@@ -63,28 +57,34 @@ public sealed class ApiSpecificationLoader : IApiSpecificationLoader
             var reader = new OpenApiJsonReader();
             var readResult = reader.Read(jsonNode, readerSettings);
 
-            if (readResult.Document is null)
-            {
-                return ApiSpecificationLoadResult.Fail(
-                    new ApiSpecificationLoadFailure(
-                        ApiSpecificationLoadFailureKind.ParseFailed,
-                        "Failed to parse specification: no OpenAPI document was produced.",
-                        source));
-            }
-
             if (readResult.Diagnostic?.Errors.Count > 0)
             {
-                return ApiSpecificationLoadResult.Fail(
+                failures.AddRange(readResult.Diagnostic.Errors.Select(error =>
                     new ApiSpecificationLoadFailure(
-                        ApiSpecificationLoadFailureKind.ParseFailed,
-                        $"Failed to parse specification: {readResult.Diagnostic.Errors[0].Message}",
-                        source));
+                        GetDiagnosticFailureKind(error.Message),
+                        FormatDiagnosticFailureMessage(error.Message),
+                        source)));
             }
 
-            var duplicateOperationIdFailure = TryGetDuplicateOperationIdFailure(readResult.Document, source);
-            if (duplicateOperationIdFailure is not null)
+            if (readResult.Document is null)
             {
-                return ApiSpecificationLoadResult.Fail(duplicateOperationIdFailure);
+                if (failures.Count == 0)
+                {
+                    failures.Add(
+                        new ApiSpecificationLoadFailure(
+                            ApiSpecificationLoadFailureKind.ParseFailed,
+                            "Failed to parse specification: no OpenAPI document was produced.",
+                            source));
+                }
+
+                return ApiSpecificationLoadResult.Fail(failures);
+            }
+
+            failures.AddRange(GetDuplicateOperationIdFailures(readResult.Document, source));
+
+            if (failures.Count > 0)
+            {
+                return ApiSpecificationLoadResult.Fail(failures);
             }
 
             return ApiSpecificationLoadResult.Success(new ApiSpecificationDocument(readResult.Document, source));
@@ -93,8 +93,8 @@ public sealed class ApiSpecificationLoader : IApiSpecificationLoader
         {
             return ApiSpecificationLoadResult.Fail(
                 new ApiSpecificationLoadFailure(
-                    ApiSpecificationLoadFailureKind.ParseFailed,
-                    $"Failed to parse specification: {exception.Message}",
+                    GetDiagnosticFailureKind(exception.Message),
+                    FormatDiagnosticFailureMessage(exception.Message),
                     source));
         }
     }
@@ -176,9 +176,29 @@ public sealed class ApiSpecificationLoader : IApiSpecificationLoader
             || version.StartsWith("3.1", StringComparison.Ordinal);
     }
 
-    private static ApiSpecificationLoadFailure? TryGetDuplicateOperationIdFailure(OpenApiDocument document, string source)
+    private static ApiSpecificationLoadFailureKind GetDiagnosticFailureKind(string message)
     {
-        var duplicateGroups = document.Paths
+        if (message.Contains("specification version", StringComparison.OrdinalIgnoreCase)
+            && message.Contains("not supported", StringComparison.OrdinalIgnoreCase))
+        {
+            return ApiSpecificationLoadFailureKind.UnsupportedSpecificationVersion;
+        }
+
+        return ApiSpecificationLoadFailureKind.ParseFailed;
+    }
+
+    private static string FormatDiagnosticFailureMessage(string message)
+    {
+        return GetDiagnosticFailureKind(message) switch
+        {
+            ApiSpecificationLoadFailureKind.UnsupportedSpecificationVersion => message,
+            _ => $"Failed to parse specification: {message}"
+        };
+    }
+
+    private static IReadOnlyList<ApiSpecificationLoadFailure> GetDuplicateOperationIdFailures(OpenApiDocument document, string source)
+    {
+        return document.Paths
             .SelectMany(static path => path.Value?.Operations?.Select(operation => new
             {
                 OperationId = operation.Value?.OperationId,
@@ -189,23 +209,73 @@ public sealed class ApiSpecificationLoader : IApiSpecificationLoader
             .GroupBy(static operation => operation.OperationId!, StringComparer.Ordinal)
             .Where(static group => group.Skip(1).Any())
             .OrderBy(static group => group.Key, StringComparer.Ordinal)
-            .Select(static group => $"'{group.Key}' at {string.Join(", ", group.OrderBy(static operation => operation.Path, StringComparer.OrdinalIgnoreCase).ThenBy(static operation => operation.Method, StringComparer.Ordinal).Select(static operation => $"{operation.Method} {operation.Path}"))}")
+            .Select(group => new ApiSpecificationLoadFailure(
+                ApiSpecificationLoadFailureKind.DuplicateOperationId,
+                $"Duplicate operationId '{group.Key}' is used by {string.Join(", ", group.OrderBy(static operation => operation.Path, StringComparer.OrdinalIgnoreCase).ThenBy(static operation => operation.Method, StringComparer.Ordinal).Select(static operation => $"{operation.Method} {operation.Path}"))}.",
+                source))
             .ToArray();
+    }
 
-        if (duplicateGroups.Length == 0)
-        {
-            return null;
-        }
-
-        return new ApiSpecificationLoadFailure(
-            ApiSpecificationLoadFailureKind.DuplicateOperationId,
-            $"Duplicate operationId values are not supported within a specification: {string.Join("; ", duplicateGroups)}.",
-            source);
+    private static IReadOnlyList<ApiSpecificationLoadFailure> GetExternalReferenceFailures(JsonNode jsonNode, string source)
+    {
+        var failures = new List<ApiSpecificationLoadFailure>();
+        CollectExternalReferenceFailures(jsonNode, source, "$", failures);
+        return failures;
     }
 
     private static string ToHttpMethod(HttpMethod operationType)
     {
         return operationType.Method.ToUpperInvariant();
+    }
+
+    private static void CollectExternalReferenceFailures(
+        JsonNode jsonNode,
+        string source,
+        string path,
+        List<ApiSpecificationLoadFailure> failures)
+    {
+        if (jsonNode is JsonObject jsonObject)
+        {
+            foreach (var property in jsonObject)
+            {
+                var propertyPath = $"{path}[{FormatJsonPathSegment(property.Key)}]";
+
+                if (property.Key.Equals("$ref", StringComparison.Ordinal)
+                    && property.Value?.GetValue<string>() is { } reference
+                    && !reference.StartsWith("#", StringComparison.Ordinal))
+                {
+                    failures.Add(
+                        new ApiSpecificationLoadFailure(
+                            ApiSpecificationLoadFailureKind.ExternalReferencesNotSupported,
+                            $"External $ref target '{reference}' is not supported in v1 at {propertyPath}.",
+                            source));
+                }
+
+                if (property.Value is not null)
+                {
+                    CollectExternalReferenceFailures(property.Value, source, propertyPath, failures);
+                }
+            }
+
+            return;
+        }
+
+        if (jsonNode is JsonArray jsonArray)
+        {
+            for (var index = 0; index < jsonArray.Count; index++)
+            {
+                var child = jsonArray[index];
+                if (child is not null)
+                {
+                    CollectExternalReferenceFailures(child, source, $"{path}[{index}]", failures);
+                }
+            }
+        }
+    }
+
+    private static string FormatJsonPathSegment(string propertyName)
+    {
+        return $"'{propertyName.Replace("'", "\\'", StringComparison.Ordinal)}'";
     }
 
     private static bool ContainsExternalReference(JsonNode jsonNode)

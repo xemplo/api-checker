@@ -4,6 +4,8 @@ namespace Xemplo.ApiChecker.Cli;
 
 public static class CliApplication
 {
+    private const string RedErrorLabel = "\u001b[31mERROR\u001b[0m";
+
     public static async Task<int> RunAsync(
         string[] args,
         TextWriter output,
@@ -33,16 +35,12 @@ public static class CliApplication
             ruleProfile ??= await ResolveRuleProfileAsync(parseResult.Options!, workingDirectory, cancellationToken);
 
             var oldResult = await loader.LoadAsync(parseResult.Options!.OldSource, cancellationToken);
-            if (!oldResult.IsSuccess)
-            {
-                await error.WriteLineAsync($"Failed to load old specification '{parseResult.Options.OldSource}': {oldResult.Failure!.Message}");
-                return 2;
-            }
-
             var newResult = await loader.LoadAsync(parseResult.Options.NewSource, cancellationToken);
-            if (!newResult.IsSuccess)
+
+            if (!oldResult.IsSuccess || !newResult.IsSuccess)
             {
-                await error.WriteLineAsync($"Failed to load new specification '{parseResult.Options.NewSource}': {newResult.Failure!.Message}");
+                await WriteLoadFailuresAsync(error, "old", parseResult.Options.OldSource, oldResult);
+                await WriteLoadFailuresAsync(error, "new", parseResult.Options.NewSource, newResult);
                 return 2;
             }
 
@@ -61,6 +59,21 @@ public static class CliApplication
         {
             await error.WriteLineAsync($"Runtime failure: {exception.Message}");
             return 2;
+        }
+    }
+
+    private static async Task WriteLoadFailuresAsync(TextWriter error, string label, string source, ApiSpecificationLoadResult result)
+    {
+        if (result.IsSuccess)
+        {
+            return;
+        }
+
+        await error.WriteLineAsync($"Failed to load {label} specification '{source}':");
+
+        foreach (var failure in result.Failures)
+        {
+            await error.WriteLineAsync($"- {RedErrorLabel} {failure.Message}");
         }
     }
 

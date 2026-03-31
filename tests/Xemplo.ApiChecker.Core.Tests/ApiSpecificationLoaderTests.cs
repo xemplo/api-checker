@@ -286,8 +286,7 @@ public class ApiSpecificationLoaderTests
             var result = await loader.LoadAsync(path);
 
             Assert.False(result.IsSuccess);
-            Assert.NotNull(result.Failure);
-            Assert.Equal(ApiSpecificationLoadFailureKind.UnsupportedSpecificationVersion, result.Failure!.Kind);
+            Assert.Contains(result.Failures, failure => failure.Kind == ApiSpecificationLoadFailureKind.UnsupportedSpecificationVersion);
         }
         finally
         {
@@ -374,11 +373,34 @@ public class ApiSpecificationLoaderTests
             var result = await loader.LoadAsync(path);
 
             Assert.False(result.IsSuccess);
-            Assert.NotNull(result.Failure);
-            Assert.Equal(ApiSpecificationLoadFailureKind.DuplicateOperationId, result.Failure!.Kind);
-            Assert.Contains("listPets", result.Failure.Message);
-            Assert.Contains("GET /pets", result.Failure.Message);
-            Assert.Contains("POST /pets/search", result.Failure.Message);
+            Assert.Single(result.Failures);
+            Assert.Equal(ApiSpecificationLoadFailureKind.DuplicateOperationId, result.Failures[0].Kind);
+            Assert.Contains("listPets", result.Failures[0].Message);
+            Assert.Contains("GET /pets", result.Failures[0].Message);
+            Assert.Contains("POST /pets/search", result.Failures[0].Message);
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    [Fact]
+    public async Task LoadAsync_WithMultipleValidationIssues_ReturnsAllFailures()
+    {
+        var path = Path.GetTempFileName();
+        await File.WriteAllTextAsync(path, MultiValidationIssueJson);
+
+        try
+        {
+            var loader = new ApiSpecificationLoader();
+
+            var result = await loader.LoadAsync(path);
+
+            Assert.False(result.IsSuccess);
+            Assert.Equal(2, result.Failures.Count);
+            Assert.Contains(result.Failures, failure => failure.Kind == ApiSpecificationLoadFailureKind.ExternalReferencesNotSupported);
+            Assert.Contains(result.Failures, failure => failure.Kind == ApiSpecificationLoadFailureKind.DuplicateOperationId);
         }
         finally
         {
@@ -451,6 +473,12 @@ public class ApiSpecificationLoaderTests
                 "\"openapi\":\"3.0.3\"," +
                 "\"info\":{\"title\":\"Pets\",\"version\":\"1.0.0\"}," +
                 "\"paths\":{\"/pets\":{\"get\":{\"operationId\":\"listPets\",\"responses\":{\"200\":{\"description\":\"ok\"}}}},\"/pets/search\":{\"post\":{\"operationId\":\"listPets\",\"responses\":{\"200\":{\"description\":\"ok\"}}}}}" +
+                "}";
+
+            private const string MultiValidationIssueJson = "{" +
+                "\"openapi\":\"3.0.3\"," +
+                "\"info\":{\"title\":\"Pets\",\"version\":\"1.0.0\"}," +
+                "\"paths\":{\"/pets\":{\"get\":{\"operationId\":\"listPets\",\"responses\":{\"200\":{\"description\":\"ok\",\"content\":{\"application/json\":{\"schema\":{\"$ref\":\"./schemas/pet.json#/Pet\"}}}}}}},\"/pets/search\":{\"post\":{\"operationId\":\"listPets\",\"responses\":{\"200\":{\"description\":\"ok\"}}}}}" +
                 "}";
 
         private const string MissingOpenApiVersionJson = """
