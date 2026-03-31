@@ -39,6 +39,15 @@ public class CliApplicationTests
     }
 
     [Fact]
+    public void Parse_WithOptionTokenInsteadOfOldValue_ReturnsFailure()
+    {
+        var result = CliArgumentParser.Parse(["--old", "--new", "new.json"]);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal("Missing value for --old.", result.ErrorMessage);
+    }
+
+    [Fact]
     public void Parse_WithMissingValueForNew_ReturnsFailure()
     {
         var result = CliArgumentParser.Parse(["--old", "old.json", "--new"]);
@@ -73,8 +82,8 @@ public class CliApplicationTests
             "--new", "new.json",
             "--output", "json",
             "--config", "rules.json",
-            "--rule", "NewRequiredInput=off",
-            "--rule", "RemovedInput=warning"]);
+            "--rule", "input:new:required=off",
+            "--rule", "input:removed=warning"]);
 
         Assert.True(result.IsSuccess);
         Assert.Equal(CliOutputMode.Json, result.Options!.OutputMode);
@@ -129,12 +138,21 @@ public class CliApplicationTests
     }
 
     [Fact]
-    public void Parse_WithInvalidRuleFormat_ReturnsFailure()
+    public void Parse_WithOptionTokenInsteadOfRuleValue_ReturnsFailure()
     {
-        var result = CliArgumentParser.Parse(["--old", "old.json", "--new", "new.json", "--rule", "NewRequiredInput"]);
+        var result = CliArgumentParser.Parse(["--old", "old.json", "--new", "new.json", "--rule", "--output", "json"]);
 
         Assert.False(result.IsSuccess);
-        Assert.Equal("Invalid rule override 'NewRequiredInput'. Expected <RuleId>=<severity>.", result.ErrorMessage);
+        Assert.Equal("Missing value for --rule.", result.ErrorMessage);
+    }
+
+    [Fact]
+    public void Parse_WithInvalidRuleFormat_ReturnsFailure()
+    {
+        var result = CliArgumentParser.Parse(["--old", "old.json", "--new", "new.json", "--rule", "input:new:required"]);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal("Invalid rule override 'input:new:required'. Expected <rule-id>=<severity>.", result.ErrorMessage);
     }
 
     [Fact]
@@ -149,7 +167,7 @@ public class CliApplicationTests
     [Fact]
     public void Parse_WithUnsupportedSeverity_ReturnsFailure()
     {
-        var result = CliArgumentParser.Parse(["--old", "old.json", "--new", "new.json", "--rule", "NewRequiredInput=critical"]);
+        var result = CliArgumentParser.Parse(["--old", "old.json", "--new", "new.json", "--rule", "input:new:required=critical"]);
 
         Assert.False(result.IsSuccess);
         Assert.Equal("Severity 'critical' is not supported.", result.ErrorMessage);
@@ -229,9 +247,9 @@ public class CliApplicationTests
         await File.WriteAllTextAsync(Path.Combine(directory, "api-rules.json"), """
             {
               "rules": {
-                "NewRequiredInput": "off",
-                "NewOptionalInput": "off",
-                "RemovedInput": "off"
+                                "input:new:required": "off",
+                                "input:new:optional": "off",
+                                "input:removed": "off"
               }
             }
             """);
@@ -263,16 +281,16 @@ public class CliApplicationTests
         await File.WriteAllTextAsync(Path.Combine(directory, "api-rules.json"), """
             {
               "rules": {
-                "NewRequiredInput": "off",
-                "NewOptionalInput": "off",
-                "RemovedInput": "off"
+                                "input:new:required": "off",
+                                "input:new:optional": "off",
+                                "input:removed": "off"
               }
             }
             """);
         await File.WriteAllTextAsync(explicitConfigPath, """
             {
               "rules": {
-                "NewRequiredInput": "error"
+                                "input:new:required": "error"
               }
             }
             """);
@@ -286,9 +304,9 @@ public class CliApplicationTests
                 workingDirectory: directory);
 
             Assert.Equal(1, exitCode);
-            Assert.Contains("NewRequiredInput", output.ToString());
-            Assert.DoesNotContain("NewOptionalInput", output.ToString());
-            Assert.DoesNotContain("RemovedInput", output.ToString());
+            Assert.Contains("input:new:required", output.ToString());
+            Assert.DoesNotContain("input:new:optional", output.ToString());
+            Assert.DoesNotContain("input:removed", output.ToString());
             Assert.Equal(string.Empty, error.ToString());
         }
         finally
@@ -310,9 +328,9 @@ public class CliApplicationTests
         await File.WriteAllTextAsync(explicitConfigPath, """
             {
               "rules": {
-                "NewRequiredInput": "off",
-                "NewOptionalInput": "off",
-                "RemovedInput": "off"
+                                "input:new:required": "off",
+                                "input:new:optional": "off",
+                                "input:removed": "off"
               }
             }
             """);
@@ -320,15 +338,15 @@ public class CliApplicationTests
         try
         {
             var exitCode = await CliApplication.RunAsync(
-                ["--old", oldPath, "--new", newPath, "--config", "pipeline-rules.json", "--rule", "NewRequiredInput=error"],
+                ["--old", oldPath, "--new", newPath, "--config", "pipeline-rules.json", "--rule", "input:new:required=error"],
                 output,
                 error,
                 workingDirectory: directory);
 
             Assert.Equal(1, exitCode);
-            Assert.Contains("NewRequiredInput", output.ToString());
-            Assert.DoesNotContain("NewOptionalInput", output.ToString());
-            Assert.DoesNotContain("RemovedInput", output.ToString());
+            Assert.Contains("input:new:required", output.ToString());
+            Assert.DoesNotContain("input:new:optional", output.ToString());
+            Assert.DoesNotContain("input:removed", output.ToString());
             Assert.Equal(string.Empty, error.ToString());
         }
         finally
@@ -582,7 +600,7 @@ public class CliApplicationTests
         Assert.Equal(2, findings.GetArrayLength());
 
         var firstFinding = findings[0];
-        Assert.Equal("EndpointRemoved", firstFinding.GetProperty("ruleId").GetString());
+        Assert.Equal("endpoint:removed", firstFinding.GetProperty("ruleId").GetString());
         Assert.Equal("error", firstFinding.GetProperty("severity").GetString());
         Assert.Equal("Endpoint removed", firstFinding.GetProperty("message").GetString());
         Assert.False(firstFinding.TryGetProperty("schemaPath", out _));
@@ -590,7 +608,7 @@ public class CliApplicationTests
         Assert.Equal("/alpha", firstFinding.GetProperty("operation").GetProperty("pathTemplate").GetString());
 
         var secondFinding = findings[1];
-        Assert.Equal("NewNullableOutput", secondFinding.GetProperty("ruleId").GetString());
+        Assert.Equal("output:new:nullable", secondFinding.GetProperty("ruleId").GetString());
         Assert.Equal("warning", secondFinding.GetProperty("severity").GetString());
         Assert.Equal("$.result.summary", secondFinding.GetProperty("schemaPath").GetString());
         Assert.Equal("POST", secondFinding.GetProperty("operation").GetProperty("method").GetString());
@@ -614,15 +632,15 @@ public class CliApplicationTests
         var findings = document.RootElement.GetProperty("findings");
 
         Assert.Equal(3, findings.GetArrayLength());
-        Assert.Equal("EndpointRemoved", findings[0].GetProperty("ruleId").GetString());
+        Assert.Equal("endpoint:removed", findings[0].GetProperty("ruleId").GetString());
         Assert.Equal("GET", findings[0].GetProperty("operation").GetProperty("method").GetString());
         Assert.Equal("/orders", findings[0].GetProperty("operation").GetProperty("pathTemplate").GetString());
 
-        Assert.Equal("NewResponseCode", findings[1].GetProperty("ruleId").GetString());
+        Assert.Equal("response:new:status-code", findings[1].GetProperty("ruleId").GetString());
         Assert.Equal("GET", findings[1].GetProperty("operation").GetProperty("method").GetString());
         Assert.Equal("/pets", findings[1].GetProperty("operation").GetProperty("pathTemplate").GetString());
 
-        Assert.Equal("NewEndpoint", findings[2].GetProperty("ruleId").GetString());
+        Assert.Equal("endpoint:new", findings[2].GetProperty("ruleId").GetString());
         Assert.Equal("POST", findings[2].GetProperty("operation").GetProperty("method").GetString());
         Assert.Equal("/pets", findings[2].GetProperty("operation").GetProperty("pathTemplate").GetString());
     }
@@ -653,7 +671,7 @@ public class CliApplicationTests
             engine);
 
         Assert.Equal(0, exitCode);
-        Assert.Contains("NewResponseCode", output.ToString());
+        Assert.Contains("response:new:status-code", output.ToString());
         Assert.Contains("Response code added", output.ToString());
         Assert.DoesNotContain("[]", output.ToString());
         Assert.Equal(string.Empty, error.ToString());
@@ -670,9 +688,9 @@ public class CliApplicationTests
         var exitCode = await CliApplication.RunAsync(["--old", oldPath, "--new", newPath], output, error);
 
         Assert.Equal(1, exitCode);
-        Assert.Contains("NewRequiredInput", output.ToString());
-        Assert.Contains("NewOptionalInput", output.ToString());
-        Assert.Contains("RemovedInput", output.ToString());
+        Assert.Contains("input:new:required", output.ToString());
+        Assert.Contains("input:new:optional", output.ToString());
+        Assert.Contains("input:removed", output.ToString());
         Assert.Contains("$.pet.age", output.ToString());
         Assert.Contains("$.pet.tags[].code", output.ToString());
         Assert.Contains("$.pet.legacy", output.ToString());
@@ -690,8 +708,8 @@ public class CliApplicationTests
         var exitCode = await CliApplication.RunAsync(["--old", oldPath, "--new", newPath], output, error);
 
         Assert.Equal(1, exitCode);
-        Assert.Contains("NewRequiredQueryParam", output.ToString());
-        Assert.Contains("NewOptionalQueryParam", output.ToString());
+        Assert.Contains("query:new:required", output.ToString());
+        Assert.Contains("query:new:optional", output.ToString());
         Assert.Contains("$query.filter", output.ToString());
         Assert.Contains("$query.includeDetails", output.ToString());
         Assert.Contains("$query.limit", output.ToString());
@@ -711,10 +729,10 @@ public class CliApplicationTests
         var exitCode = await CliApplication.RunAsync(["--old", oldPath, "--new", newPath], output, error);
 
         Assert.Equal(1, exitCode);
-        Assert.Contains("RemovedOutput", output.ToString());
-        Assert.Contains("NewNullableOutput", output.ToString());
-        Assert.Contains("NewNonNullableOutput", output.ToString());
-        Assert.Contains("NewEnumOutput", output.ToString());
+        Assert.Contains("output:removed", output.ToString());
+        Assert.Contains("output:new:nullable", output.ToString());
+        Assert.Contains("output:new:non-nullable", output.ToString());
+        Assert.Contains("output:new:enum-value", output.ToString());
         Assert.Contains("$.result.legacy", output.ToString());
         Assert.Contains("$.result.summary", output.ToString());
         Assert.Contains("$.result.count", output.ToString());
@@ -735,9 +753,9 @@ public class CliApplicationTests
         var exitCode = await CliApplication.RunAsync(["--old", oldPath, "--new", newPath], output, error);
 
         Assert.Equal(1, exitCode);
-        Assert.Contains("EndpointRemoved", output.ToString());
-        Assert.Contains("NewEndpoint", output.ToString());
-        Assert.Contains("NewResponseCode", output.ToString());
+        Assert.Contains("endpoint:removed", output.ToString());
+        Assert.Contains("endpoint:new", output.ToString());
+        Assert.Contains("response:new:status-code", output.ToString());
         Assert.Contains("[GET /orders]", output.ToString());
         Assert.Contains("[POST /pets]", output.ToString());
         Assert.Contains("Response code '201' was added.", output.ToString());

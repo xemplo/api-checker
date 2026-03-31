@@ -116,9 +116,21 @@ public static class CliArgumentParser
             return false;
         }
 
-        value = args[nextIndex];
+        var nextValue = args[nextIndex];
+        if (string.IsNullOrWhiteSpace(nextValue) || IsOptionToken(nextValue))
+        {
+            value = null;
+            return false;
+        }
+
+        value = nextValue;
         index = nextIndex;
         return true;
+    }
+
+    private static bool IsOptionToken(string value)
+    {
+        return value.StartsWith("--", StringComparison.Ordinal);
     }
 
     private static bool TryParseRuleOverride(
@@ -134,15 +146,14 @@ public static class CliArgumentParser
         var separatorIndex = text.IndexOf('=');
         if (separatorIndex <= 0 || separatorIndex == text.Length - 1)
         {
-            errorMessage = $"Invalid rule override '{text}'. Expected <RuleId>=<severity>.";
+            errorMessage = $"Invalid rule override '{text}'. Expected <rule-id>=<severity>.";
             return false;
         }
 
         var ruleText = text[..separatorIndex].Trim();
         var severityText = text[(separatorIndex + 1)..].Trim();
 
-        if (!Enum.TryParse<ApiRuleId>(ruleText, ignoreCase: true, out ruleId)
-            || !Enum.IsDefined(ruleId))
+        if (!ApiRuleIdExtensions.TryParseIdentifier(ruleText, out ruleId))
         {
             errorMessage = $"Rule '{ruleText}' is not supported.";
             return false;

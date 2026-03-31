@@ -24,7 +24,7 @@ public static class JsonReportWriter
             options.NewSource,
             result.HasErrorFindings,
             result.Findings.Select(static finding => new JsonFinding(
-                finding.RuleId.ToString(),
+                finding.RuleId.GetIdentifier(),
                 finding.Severity.ToString().ToLowerInvariant(),
                 finding.Message,
                 finding.Operation is null ? null : new JsonOperation(finding.Operation.Method, finding.Operation.PathTemplate),

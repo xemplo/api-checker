@@ -10,21 +10,23 @@ public class ApiComparisonContractsTests
     {
         var expected = new[]
         {
-            nameof(ApiRuleId.NewRequiredInput),
-            nameof(ApiRuleId.NewOptionalInput),
-            nameof(ApiRuleId.NewNullableOutput),
-            nameof(ApiRuleId.NewNonNullableOutput),
-            nameof(ApiRuleId.NewEnumOutput),
-            nameof(ApiRuleId.NewRequiredQueryParam),
-            nameof(ApiRuleId.NewOptionalQueryParam),
-            nameof(ApiRuleId.RemovedInput),
-            nameof(ApiRuleId.RemovedOutput),
-            nameof(ApiRuleId.NewResponseCode),
-            nameof(ApiRuleId.NewEndpoint),
-            nameof(ApiRuleId.EndpointRemoved)
+            "input:new:required",
+            "input:new:optional",
+            "output:new:nullable",
+            "output:new:non-nullable",
+            "output:new:enum-value",
+            "query:new:required",
+            "query:new:optional",
+            "input:removed",
+            "output:removed",
+            "response:new:status-code",
+            "endpoint:new",
+            "endpoint:removed"
         };
 
-        var actual = Enum.GetNames<ApiRuleId>();
+        var actual = Enum.GetValues<ApiRuleId>()
+            .Select(static ruleId => ruleId.GetIdentifier())
+            .ToArray();
 
         Assert.Equal(expected, actual);
     }
@@ -145,8 +147,8 @@ public class ApiComparisonContractsTests
         await File.WriteAllTextAsync(configPath, """
             {
               "rules": {
-                "NewRequiredInput": "off",
-                "RemovedInput": "warning"
+                                "input:new:required": "off",
+                                "input:removed": "warning"
               }
             }
             """);

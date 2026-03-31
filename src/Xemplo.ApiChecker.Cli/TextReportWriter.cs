@@ -24,7 +24,7 @@ public static class TextReportWriter
         {
             var location = finding.Operation is null ? string.Empty : $" [{finding.Operation.Method} {finding.Operation.PathTemplate}]";
             var schemaPath = string.IsNullOrWhiteSpace(finding.SchemaPath) ? string.Empty : $" ({finding.SchemaPath})";
-            await output.WriteLineAsync($"- {finding.Severity}: {finding.RuleId}{location}{schemaPath} {finding.Message}");
+            await output.WriteLineAsync($"- {finding.Severity}: {finding.RuleId.GetIdentifier()}{location}{schemaPath} {finding.Message}");
         }
     }
 }

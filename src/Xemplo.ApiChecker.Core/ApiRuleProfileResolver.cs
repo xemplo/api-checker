@@ -78,8 +78,7 @@ public static class ApiRuleProfileResolver
                         $"Rule '{property.Name}' must have a string severity value.");
                 }
 
-                if (!Enum.TryParse<ApiRuleId>(property.Name, ignoreCase: true, out var ruleId)
-                    || !Enum.IsDefined(ruleId))
+                if (!ApiRuleIdExtensions.TryParseIdentifier(property.Name, out var ruleId))
                 {
                     throw new ApiRuleProfileConfigurationException($"Rule '{property.Name}' is not supported.");
                 }

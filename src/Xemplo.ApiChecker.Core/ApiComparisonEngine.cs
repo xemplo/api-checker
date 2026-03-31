@@ -569,18 +569,21 @@ public sealed class ApiComparisonEngine : IApiComparisonEngine
                 continue;
             }
 
-            destination[parameter.Name] = AnalyzeQueryParameter(parameter);
+            var parameterName = parameter.Name;
+            destination[parameterName] = AnalyzeQueryParameter(parameter, parameterName);
         }
     }
 
-    private QueryParameterAnalysis AnalyzeQueryParameter(Microsoft.OpenApi.Models.Interfaces.IOpenApiParameter parameter)
+    private QueryParameterAnalysis AnalyzeQueryParameter(
+        Microsoft.OpenApi.Models.Interfaces.IOpenApiParameter parameter,
+        string parameterName)
     {
-        var schemaPath = $"$query.{parameter.Name}";
+        var schemaPath = $"$query.{parameterName}";
         var analysis = _schemaAnalyzer.Analyze(parameter.Schema, ApiSchemaContext.Request, schemaPath);
         var rootNode = analysis.Nodes.FirstOrDefault(static node => node.PropertyName is null);
 
         return new QueryParameterAnalysis(
-            parameter.Name,
+            parameterName,
             parameter.Required,
             rootNode?.Usage ?? ApiSchemaUsage.Included,
             rootNode?.Nullable ?? ApiSchemaCondition.Ambiguous,
