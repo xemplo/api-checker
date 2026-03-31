@@ -7,7 +7,7 @@
 - local files and unauthenticated `http` or `https` URLs
 - JSON request/response body comparisons only
 - query-parameter comparisons only
-- endpoint additions/removals and new response-code detection
+- endpoint additions/removals, operationId updates, and new response-code detection
 - conservative evaluation when the specification is ambiguous
 
 ## Usage
@@ -49,8 +49,12 @@ Supported rule identifiers:
 
 - `input:new:required`
 - `input:new:optional`
+- `input:updated:required`
+- `input:updated:optional`
 - `output:new:nullable`
 - `output:new:non-nullable`
+- `output:updated:nullable`
+- `output:updated:non-nullable`
 - `output:new:enum-value`
 - `query:new:required`
 - `query:new:optional`
@@ -58,6 +62,7 @@ Supported rule identifiers:
 - `output:removed`
 - `response:new:status-code`
 - `endpoint:new`
+- `endpoint:updated:id`
 - `endpoint:removed`
 
 Example `api-rules.json`:
@@ -67,8 +72,12 @@ Example `api-rules.json`:
   "rules": {
     "input:new:required": "error",
     "input:new:optional": "warning",
+    "input:updated:required": "error",
+    "input:updated:optional": "warning",
     "output:new:nullable": "warning",
     "output:new:non-nullable": "warning",
+    "output:updated:nullable": "warning",
+    "output:updated:non-nullable": "warning",
     "output:new:enum-value": "warning",
     "query:new:required": "error",
     "query:new:optional": "warning",
@@ -76,6 +85,7 @@ Example `api-rules.json`:
     "output:removed": "error",
     "response:new:status-code": "warning",
     "endpoint:new": "warning",
+    "endpoint:updated:id": "warning",
     "endpoint:removed": "error"
   }
 }
