@@ -154,6 +154,120 @@ public class ApiComparisonEngineTests
         Assert.Empty(result.Findings);
     }
 
+    [Fact]
+    public async Task Compare_ResponseBodyFixtures_ProducesExpectedFindings()
+    {
+        var engine = new ApiComparisonEngine();
+        var input = await LoadFixturePairAsync("response-body-old.json", "response-body-new.json");
+
+        var result = engine.Compare(input, ApiRuleProfile.Default);
+
+        Assert.Collection(
+            result.Findings,
+            finding =>
+            {
+                Assert.Equal(ApiRuleId.NewNonNullableOutput, finding.RuleId);
+                Assert.Equal(ApiSeverity.Warning, finding.Severity);
+                Assert.Equal("$.result.count", finding.SchemaPath);
+            },
+            finding =>
+            {
+                Assert.Equal(ApiRuleId.RemovedOutput, finding.RuleId);
+                Assert.Equal(ApiSeverity.Error, finding.Severity);
+                Assert.Equal("$.result.legacy", finding.SchemaPath);
+            },
+            finding =>
+            {
+                Assert.Equal(ApiRuleId.NewEnumOutput, finding.RuleId);
+                Assert.Equal(ApiSeverity.Warning, finding.Severity);
+                Assert.Equal("$.result.status", finding.SchemaPath);
+                Assert.Contains("Archived", finding.Message, StringComparison.Ordinal);
+            },
+            finding =>
+            {
+                Assert.Equal(ApiRuleId.NewNullableOutput, finding.RuleId);
+                Assert.Equal(ApiSeverity.Warning, finding.Severity);
+                Assert.Equal("$.result.summary", finding.SchemaPath);
+            },
+            finding =>
+            {
+                Assert.Equal(ApiRuleId.NewNonNullableOutput, finding.RuleId);
+                Assert.Equal(ApiSeverity.Warning, finding.Severity);
+                Assert.Equal("$.result.traceId", finding.SchemaPath);
+            });
+    }
+
+    [Fact]
+    public async Task Compare_ResponseBodyFixtures_SkipsWriteOnlyAndAmbiguousFields()
+    {
+        var engine = new ApiComparisonEngine();
+        var input = await LoadFixturePairAsync("response-body-old.json", "response-body-new.json");
+
+        var result = engine.Compare(input, ApiRuleProfile.Default);
+
+        Assert.DoesNotContain(result.Findings, static finding => finding.SchemaPath == "$.result.internalNote");
+        Assert.DoesNotContain(result.Findings, static finding => finding.SchemaPath == "$.result.polymorphic");
+    }
+
+    [Fact]
+    public async Task Compare_EndpointAndResponseCodeFixtures_ProducesExpectedFindings()
+    {
+        var engine = new ApiComparisonEngine();
+        var input = await LoadFixturePairAsync("endpoint-responsecode-old.json", "endpoint-responsecode-new.json");
+
+        var result = engine.Compare(input, ApiRuleProfile.Default);
+
+        Assert.Collection(
+            result.Findings,
+            finding =>
+            {
+                Assert.Equal(ApiRuleId.EndpointRemoved, finding.RuleId);
+                Assert.Equal(ApiSeverity.Error, finding.Severity);
+                Assert.Equal("GET", finding.Operation!.Method);
+                Assert.Equal("/orders", finding.Operation.PathTemplate);
+            },
+            finding =>
+            {
+                Assert.Equal(ApiRuleId.NewResponseCode, finding.RuleId);
+                Assert.Equal(ApiSeverity.Warning, finding.Severity);
+                Assert.Equal("GET", finding.Operation!.Method);
+                Assert.Equal("/pets", finding.Operation.PathTemplate);
+                Assert.Contains("201", finding.Message, StringComparison.Ordinal);
+            },
+            finding =>
+            {
+                Assert.Equal(ApiRuleId.NewEndpoint, finding.RuleId);
+                Assert.Equal(ApiSeverity.Warning, finding.Severity);
+                Assert.Equal("POST", finding.Operation!.Method);
+                Assert.Equal("/pets", finding.Operation.PathTemplate);
+            });
+    }
+
+    [Fact]
+    public void Compare_MethodChangeOnSamePath_ProducesRemovedAndNewEndpointFindings()
+    {
+        var engine = new ApiComparisonEngine();
+        var oldSpecification = CreateSpecification(CreateGetOperation(), method: System.Net.Http.HttpMethod.Get);
+        var newSpecification = CreateSpecification(CreateGetOperation(), method: System.Net.Http.HttpMethod.Post);
+
+        var result = engine.Compare(new ApiComparisonInput(oldSpecification, newSpecification), ApiRuleProfile.Default);
+
+        Assert.Collection(
+            result.Findings,
+            finding =>
+            {
+                Assert.Equal(ApiRuleId.EndpointRemoved, finding.RuleId);
+                Assert.Equal("GET", finding.Operation!.Method);
+                Assert.Equal("/pets", finding.Operation.PathTemplate);
+            },
+            finding =>
+            {
+                Assert.Equal(ApiRuleId.NewEndpoint, finding.RuleId);
+                Assert.Equal("POST", finding.Operation!.Method);
+                Assert.Equal("/pets", finding.Operation.PathTemplate);
+            });
+    }
+
     private static async Task<ApiComparisonInput> LoadRequestBodyFixturePairAsync()
     {
         return await LoadFixturePairAsync("request-body-old.json", "request-body-new.json");

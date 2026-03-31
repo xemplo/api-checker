@@ -23,7 +23,11 @@ public sealed class ApiComparisonEngine : IApiComparisonEngine
         {
             EvaluateRequestBodyChanges(operationMatch, ruleProfile, findings);
             EvaluateQueryParameterChanges(operationMatch, ruleProfile, findings);
+            EvaluateResponseBodyChanges(operationMatch, ruleProfile, findings);
+            EvaluateResponseCodeChanges(operationMatch, ruleProfile, findings);
         }
+
+        EvaluateEndpointChanges(comparisonMap, ruleProfile, findings);
 
         if (findings.Count == 0)
         {
@@ -116,6 +120,128 @@ public sealed class ApiComparisonEngine : IApiComparisonEngine
         }
     }
 
+    private void EvaluateResponseBodyChanges(
+        ApiOperationMatch operationMatch,
+        ApiRuleProfile ruleProfile,
+        ICollection<ApiFinding> findings)
+    {
+        foreach (var responseMatch in operationMatch.MatchedResponses)
+        {
+            var oldAnalysis = _schemaAnalyzer.Analyze(responseMatch.OldResponse.Media.Schema, ApiSchemaContext.Response);
+            var newAnalysis = _schemaAnalyzer.Analyze(responseMatch.NewResponse.Media.Schema, ApiSchemaContext.Response);
+            var oldNodes = oldAnalysis.Nodes.ToDictionary(static node => node.SchemaPath, StringComparer.Ordinal);
+            var newNodes = newAnalysis.Nodes.ToDictionary(static node => node.SchemaPath, StringComparer.Ordinal);
+
+            foreach (var newNode in newAnalysis.Nodes)
+            {
+                if (!ShouldEvaluateResponseField(newNode))
+                {
+                    continue;
+                }
+
+                if (oldNodes.TryGetValue(newNode.SchemaPath, out var oldNode)
+                    && oldNode.Usage != ApiSchemaUsage.Excluded)
+                {
+                    AddNewEnumOutputFindings(oldNode, newNode, ruleProfile, responseMatch.NewResponse.OperationIdentity, findings);
+                    continue;
+                }
+
+                var finding = CreateAddedOutputFinding(newNode, ruleProfile, responseMatch.NewResponse.OperationIdentity);
+                if (finding is not null)
+                {
+                    findings.Add(finding);
+                }
+            }
+
+            foreach (var oldNode in oldAnalysis.Nodes)
+            {
+                if (!ShouldEvaluateResponseField(oldNode))
+                {
+                    continue;
+                }
+
+                if (!newNodes.TryGetValue(oldNode.SchemaPath, out var newNode))
+                {
+                    AddRemovedOutputFinding(oldNode, ruleProfile, responseMatch.NewResponse.OperationIdentity, findings);
+                    continue;
+                }
+
+                if (newNode.Usage == ApiSchemaUsage.Excluded)
+                {
+                    AddRemovedOutputFinding(oldNode, ruleProfile, responseMatch.NewResponse.OperationIdentity, findings);
+                }
+            }
+        }
+    }
+
+    private static void EvaluateResponseCodeChanges(
+        ApiOperationMatch operationMatch,
+        ApiRuleProfile ruleProfile,
+        ICollection<ApiFinding> findings)
+    {
+        var oldExplicitStatusCodes = operationMatch.OldOperation.Operation.Responses?
+            .Keys
+            .Where(static statusCode => !statusCode.Equals("default", StringComparison.OrdinalIgnoreCase))
+            .ToHashSet(StringComparer.Ordinal)
+            ?? [];
+
+        foreach (var responseGroup in operationMatch.UnmatchedNewResponses
+                     .GroupBy(static response => response.StatusCode, StringComparer.Ordinal)
+                     .OrderBy(static group => group.Key, StringComparer.Ordinal))
+        {
+            if (responseGroup.Key.Equals("default", StringComparison.OrdinalIgnoreCase)
+                || oldExplicitStatusCodes.Contains(responseGroup.Key))
+            {
+                continue;
+            }
+
+            var finding = CreateOperationFinding(
+                ApiRuleId.NewResponseCode,
+                ruleProfile,
+                $"Response code '{responseGroup.Key}' was added.",
+                operationMatch.NewOperation.Identity);
+
+            if (finding is not null)
+            {
+                findings.Add(finding);
+            }
+        }
+    }
+
+    private static void EvaluateEndpointChanges(
+        ApiComparisonMap comparisonMap,
+        ApiRuleProfile ruleProfile,
+        ICollection<ApiFinding> findings)
+    {
+        foreach (var operation in comparisonMap.UnmatchedOldOperations)
+        {
+            var finding = CreateOperationFinding(
+                ApiRuleId.EndpointRemoved,
+                ruleProfile,
+                $"Endpoint '{operation.Identity.Method} {operation.Identity.PathTemplate}' was removed.",
+                operation.Identity);
+
+            if (finding is not null)
+            {
+                findings.Add(finding);
+            }
+        }
+
+        foreach (var operation in comparisonMap.UnmatchedNewOperations)
+        {
+            var finding = CreateOperationFinding(
+                ApiRuleId.NewEndpoint,
+                ruleProfile,
+                $"Endpoint '{operation.Identity.Method} {operation.Identity.PathTemplate}' was added.",
+                operation.Identity);
+
+            if (finding is not null)
+            {
+                findings.Add(finding);
+            }
+        }
+    }
+
     private static ApiFinding? CreateAddedInputFinding(
         ApiJsonSchemaNode node,
         ApiRuleProfile ruleProfile,
@@ -148,6 +274,46 @@ public sealed class ApiComparisonEngine : IApiComparisonEngine
                 ApiRuleId.NewOptionalInput,
                 ruleProfile,
                 $"Request field '{node.SchemaPath}' was added as optional input.",
+                operation,
+                node.SchemaPath);
+        }
+
+        return null;
+    }
+
+    private static bool ShouldEvaluateResponseField(ApiJsonSchemaNode node)
+    {
+        return node.PropertyName is not null
+            && node.Usage == ApiSchemaUsage.Included;
+    }
+
+    private static ApiFinding? CreateAddedOutputFinding(
+        ApiJsonSchemaNode node,
+        ApiRuleProfile ruleProfile,
+        ApiOperationIdentity operation)
+    {
+        if (node.Nullable == ApiSchemaCondition.Ambiguous
+            || node.Usage == ApiSchemaUsage.Ambiguous)
+        {
+            return null;
+        }
+
+        if (node.Nullable == ApiSchemaCondition.True)
+        {
+            return CreateFinding(
+                ApiRuleId.NewNullableOutput,
+                ruleProfile,
+                $"Response field '{node.SchemaPath}' was added as nullable output.",
+                operation,
+                node.SchemaPath);
+        }
+
+        if (node.Nullable == ApiSchemaCondition.False)
+        {
+            return CreateFinding(
+                ApiRuleId.NewNonNullableOutput,
+                ruleProfile,
+                $"Response field '{node.SchemaPath}' was added as non-nullable output.",
                 operation,
                 node.SchemaPath);
         }
@@ -230,6 +396,70 @@ public sealed class ApiComparisonEngine : IApiComparisonEngine
         }
     }
 
+    private static void AddRemovedOutputFinding(
+        ApiJsonSchemaNode node,
+        ApiRuleProfile ruleProfile,
+        ApiOperationIdentity operation,
+        ICollection<ApiFinding> findings)
+    {
+        if (node.Usage == ApiSchemaUsage.Ambiguous)
+        {
+            return;
+        }
+
+        var finding = CreateFinding(
+            ApiRuleId.RemovedOutput,
+            ruleProfile,
+            $"Response field '{node.SchemaPath}' was removed.",
+            operation,
+            node.SchemaPath);
+
+        if (finding is not null)
+        {
+            findings.Add(finding);
+        }
+    }
+
+    private static void AddNewEnumOutputFindings(
+        ApiJsonSchemaNode oldNode,
+        ApiJsonSchemaNode newNode,
+        ApiRuleProfile ruleProfile,
+        ApiOperationIdentity operation,
+        ICollection<ApiFinding> findings)
+    {
+        if (oldNode.Usage != ApiSchemaUsage.Included
+            || newNode.Usage != ApiSchemaUsage.Included)
+        {
+            return;
+        }
+
+        if (oldNode.EnumValues.Count == 0 || newNode.EnumValues.Count == 0)
+        {
+            return;
+        }
+
+        var oldEnumValues = oldNode.EnumValues.ToHashSet(StringComparer.Ordinal);
+        foreach (var enumValue in newNode.EnumValues)
+        {
+            if (oldEnumValues.Contains(enumValue))
+            {
+                continue;
+            }
+
+            var finding = CreateFinding(
+                ApiRuleId.NewEnumOutput,
+                ruleProfile,
+                $"Response field '{newNode.SchemaPath}' added enum value '{enumValue}'.",
+                operation,
+                newNode.SchemaPath);
+
+            if (finding is not null)
+            {
+                findings.Add(finding);
+            }
+        }
+    }
+
     private static ApiFinding? CreateFinding(
         ApiRuleId ruleId,
         ApiRuleProfile ruleProfile,
@@ -241,6 +471,18 @@ public sealed class ApiComparisonEngine : IApiComparisonEngine
         return severity == ApiSeverity.Off
             ? null
             : new ApiFinding(ruleId, severity, message, operation, schemaPath);
+    }
+
+    private static ApiFinding? CreateOperationFinding(
+        ApiRuleId ruleId,
+        ApiRuleProfile ruleProfile,
+        string message,
+        ApiOperationIdentity operation)
+    {
+        var severity = ruleProfile.GetSeverity(ruleId);
+        return severity == ApiSeverity.Off
+            ? null
+            : new ApiFinding(ruleId, severity, message, operation);
     }
 
     private static IReadOnlyList<ApiFinding> OrderFindings(IEnumerable<ApiFinding> findings)

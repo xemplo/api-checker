@@ -136,4 +136,39 @@ public class ApiComparisonContractsTests
         Assert.Single(actual.Findings);
         Assert.Equal(ApiRuleId.NewEndpoint, actual.Findings[0].RuleId);
     }
+
+    [Fact]
+    public async Task RuleProfileResolver_LoadFromFile_CanBeUsedOutsideCli()
+    {
+        var directory = CreateTempDirectory();
+        var configPath = Path.Combine(directory, "rules.json");
+        await File.WriteAllTextAsync(configPath, """
+            {
+              "rules": {
+                "NewRequiredInput": "off",
+                "RemovedInput": "warning"
+              }
+            }
+            """);
+
+        try
+        {
+            var profile = await ApiRuleProfileResolver.LoadFromFileAsync(configPath);
+
+            Assert.Equal(ApiSeverity.Off, profile.GetSeverity(ApiRuleId.NewRequiredInput));
+            Assert.Equal(ApiSeverity.Warning, profile.GetSeverity(ApiRuleId.RemovedInput));
+            Assert.Equal(ApiSeverity.Warning, profile.GetSeverity(ApiRuleId.NewOptionalInput));
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    private static string CreateTempDirectory()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), $"api-checker-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(directory);
+        return directory;
+    }
 }

@@ -22,7 +22,7 @@ public sealed class ApiRuleProfile
 
     public ApiRuleProfile(IReadOnlyDictionary<ApiRuleId, ApiSeverity> severities)
     {
-        _severities = severities;
+        _severities = new Dictionary<ApiRuleId, ApiSeverity>(severities);
     }
 
     public ApiSeverity GetSeverity(ApiRuleId ruleId)

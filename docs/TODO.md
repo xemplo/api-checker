@@ -95,7 +95,7 @@ All tasks implicitly include unit and fixture coverage, verification of acceptan
      - After this task, the tool can be run end-to-end for supported body and query-parameter scenarios.
 
 8. **Implement response body compatibility rules**
-   - Status: Proposed
+   - Status: Completed (2026-03-31)
    - Blockers: 3, 4, 5
    - User Stories: 14, 15, 16, 17, 28, 32, 33, 34, 35, 36
    - Description: Evaluate matched JSON responses for response-body compatibility changes, and extend the runnable CLI so those findings become part of normal tool output. This task covers `RemovedOutput`, `NewNullableOutput`, `NewNonNullableOutput`, and `NewEnumOutput`, producing structured findings without introducing heuristic rematching.
@@ -108,7 +108,7 @@ All tasks implicitly include unit and fixture coverage, verification of acceptan
      - After this task, the tool can be run end-to-end for supported request, query, and response-body scenarios.
 
 9. **Implement endpoint and response code change rules**
-   - Status: Proposed
+   - Status: Completed (2026-03-31)
    - Blockers: 3, 4
    - User Stories: 18, 19, 20, 28, 32, 34
    - Description: Evaluate unmatched operations and unmatched response codes to produce the surface-level compatibility findings for `NewResponseCode`, `NewEndpoint`, and `EndpointRemoved`, and wire those findings into the runnable CLI. This task completes the non-schema rule set using the established matching model.
@@ -121,7 +121,7 @@ All tasks implicitly include unit and fixture coverage, verification of acceptan
      - After this task, the CLI exposes the full v1 rule set through its text output path.
 
 10. **Implement configuration resolution and rule severity layering**
-   - Status: Proposed
+   - Status: Completed (2026-03-31)
    - Blockers: 1
    - User Stories: 21, 22, 23, 24, 25, 29, 30, 31
     - Description: Add the configuration model and resolution pipeline for built-in defaults, optional local `api-rules.json`, explicit `--config` input, and partial CLI rule overrides. This task should also define and implement the repeated `--rule <RuleId>=<severity>` CLI syntax so override parsing, validation, and layering all live with the configuration behavior they affect. The task should establish the effective rule set consumed by the engine while keeping the configuration API usable from non-CLI callers.
@@ -134,7 +134,7 @@ All tasks implicitly include unit and fixture coverage, verification of acceptan
      - Invalid configuration content is rejected with a clear runtime failure outcome.
 
 11. **Complete the CLI surface, reporters, and CI exit semantics**
-   - Status: Proposed
+   - Status: Completed (2026-03-31)
   - Blockers: 3, 6, 7, 8, 9, 10
    - User Stories: 1, 2, 3, 4, 26, 27, 29
   - Description: Expand the early CLI shell into the full v1 product surface by adding configuration handling, structured JSON output, and the required CI exit semantics. This task finishes the command-line contract after the comparison engine capabilities are in place.
