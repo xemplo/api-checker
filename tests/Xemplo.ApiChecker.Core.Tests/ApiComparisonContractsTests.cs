@@ -32,6 +32,19 @@ public class ApiComparisonContractsTests
     }
 
     [Fact]
+    public void RuleCatalog_MapsCanonicalIdentifiersToMetadata()
+    {
+        foreach (var descriptor in ApiRuleCatalog.All)
+        {
+            var resolved = ApiRuleCatalog.GetDescriptor(descriptor.Id);
+
+            Assert.Equal(descriptor, resolved);
+            Assert.True(ApiRuleCatalog.TryGetDescriptor(descriptor.Identifier, out var parsed));
+            Assert.Equal(descriptor, parsed);
+        }
+    }
+
+    [Fact]
     public void DefaultProfile_UsesExpectedSeverities()
     {
         var profile = ApiRuleProfile.Default;
@@ -88,6 +101,21 @@ public class ApiComparisonContractsTests
         var profile = new ApiRuleProfile(new Dictionary<ApiRuleId, ApiSeverity>());
 
         Assert.Equal(ApiSeverity.Off, profile.GetSeverity(ApiRuleId.NewEndpoint));
+    }
+
+    [Fact]
+    public void RuleProfile_CanDetectWhenAFamilyIsDisabled()
+    {
+        var profile = new ApiRuleProfile(new Dictionary<ApiRuleId, ApiSeverity>
+        {
+            [ApiRuleId.NewRequiredInput] = ApiSeverity.Off,
+            [ApiRuleId.NewOptionalInput] = ApiSeverity.Off,
+            [ApiRuleId.RemovedInput] = ApiSeverity.Off,
+            [ApiRuleId.NewEndpoint] = ApiSeverity.Warning
+        });
+
+        Assert.False(profile.HasEnabledRules(ApiRuleFamily.Input));
+        Assert.True(profile.HasEnabledRules(ApiRuleFamily.Endpoint));
     }
 
     [Fact]
