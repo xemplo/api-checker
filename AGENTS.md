@@ -1,4 +1,4 @@
 - Prefer simplicity over complexity wherever possible
 - Include unit tests for any changes in logic
-- Use XUnit/NSubtitute for unit testing
+- Use XUnit/NSubstitute for unit testing
 - Do not over-comment

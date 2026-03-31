@@ -794,7 +794,7 @@ public class CliApplicationTests
             .Returns(ApiSpecificationLoadResult.Success(newDocument));
         engine.Compare(Arg.Any<ApiComparisonInput>(), ApiRuleProfile.Default)
             .Returns(new ApiComparisonResult(
-                [new ApiFinding(ApiRuleId.NewResponseCode, ApiSeverity.Warning, "Response code added") ]));
+                [new ApiFinding(ApiRuleId.NewResponseCode, ApiSeverity.Warning, "Response code added")]));
 
         var exitCode = await CliApplication.RunAsync(
             ["--old", "old.json", "--new", "new.json"],

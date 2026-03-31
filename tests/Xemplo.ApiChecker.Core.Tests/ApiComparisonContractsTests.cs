@@ -50,6 +50,13 @@ public class ApiComparisonContractsTests
     }
 
     [Fact]
+    public void RuleCatalog_CollectionsAreExposedAsReadOnlyViews()
+    {
+        Assert.False(ApiRuleCatalog.All is ApiRuleDescriptor[]);
+        Assert.False(ApiRuleCatalog.GetDescriptors(ApiRuleFamily.Input) is ApiRuleDescriptor[]);
+    }
+
+    [Fact]
     public void DefaultProfile_UsesExpectedSeverities()
     {
         var profile = ApiRuleProfile.Default;
@@ -111,6 +118,14 @@ public class ApiComparisonContractsTests
         var profile = new ApiRuleProfile(new Dictionary<ApiRuleId, ApiSeverity>());
 
         Assert.Equal(ApiSeverity.Off, profile.GetSeverity(ApiRuleId.NewEndpoint));
+    }
+
+    [Fact]
+    public void RuleProfile_ThrowsForNullSeverities()
+    {
+        var exception = Assert.Throws<ArgumentNullException>(() => new ApiRuleProfile(null!));
+
+        Assert.Equal("severities", exception.ParamName);
     }
 
     [Fact]

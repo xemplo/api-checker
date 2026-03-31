@@ -8,6 +8,8 @@ public sealed class ApiRuleProfile
 
     public ApiRuleProfile(IReadOnlyDictionary<ApiRuleId, ApiSeverity> severities)
     {
+        ArgumentNullException.ThrowIfNull(severities);
+
         _severities = new Dictionary<ApiRuleId, ApiSeverity>(severities);
     }
 

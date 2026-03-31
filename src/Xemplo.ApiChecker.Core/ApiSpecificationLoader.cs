@@ -7,11 +7,13 @@ namespace Xemplo.ApiChecker.Core;
 
 public sealed class ApiSpecificationLoader : IApiSpecificationLoader
 {
+    private static readonly HttpClient SharedHttpClient = new();
+
     private readonly HttpClient _httpClient;
 
     public ApiSpecificationLoader(HttpClient? httpClient = null)
     {
-        _httpClient = httpClient ?? new HttpClient();
+        _httpClient = httpClient ?? SharedHttpClient;
     }
 
     public async Task<ApiSpecificationLoadResult> LoadAsync(string source, CancellationToken cancellationToken = default)

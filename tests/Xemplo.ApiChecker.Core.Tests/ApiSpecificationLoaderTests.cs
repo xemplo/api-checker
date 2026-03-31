@@ -490,23 +490,23 @@ public class ApiSpecificationLoaderTests
         paths: {}
         """;
 
-        private const string InvalidTopLevelJson = """
+    private const string InvalidTopLevelJson = """
                 []
                 """;
 
-            private const string DuplicateOperationIdJson = "{" +
-                "\"openapi\":\"3.0.3\"," +
-                "\"info\":{\"title\":\"Pets\",\"version\":\"1.0.0\"}," +
-                "\"paths\":{\"/pets\":{\"get\":{\"operationId\":\"listPets\",\"responses\":{\"200\":{\"description\":\"ok\"}}}},\"/pets/search\":{\"post\":{\"operationId\":\"listPets\",\"responses\":{\"200\":{\"description\":\"ok\"}}}}}" +
-                "}";
+    private const string DuplicateOperationIdJson = "{" +
+        "\"openapi\":\"3.0.3\"," +
+        "\"info\":{\"title\":\"Pets\",\"version\":\"1.0.0\"}," +
+        "\"paths\":{\"/pets\":{\"get\":{\"operationId\":\"listPets\",\"responses\":{\"200\":{\"description\":\"ok\"}}}},\"/pets/search\":{\"post\":{\"operationId\":\"listPets\",\"responses\":{\"200\":{\"description\":\"ok\"}}}}}" +
+        "}";
 
-            private const string MultiValidationIssueJson = "{" +
-                "\"openapi\":\"3.0.3\"," +
-                "\"info\":{\"title\":\"Pets\",\"version\":\"1.0.0\"}," +
-                "\"paths\":{\"/pets\":{\"get\":{\"operationId\":\"listPets\",\"responses\":{\"200\":{\"description\":\"ok\",\"content\":{\"application/json\":{\"schema\":{\"$ref\":\"./schemas/pet.json#/Pet\"}}}}}}},\"/pets/search\":{\"post\":{\"operationId\":\"listPets\",\"responses\":{\"200\":{\"description\":\"ok\",\"content\":{\"application/json\":{\"schema\":{\"$ref\":\"#/components/schemas/MissingPet\"}}}}}}}}" +
-                "}";
+    private const string MultiValidationIssueJson = "{" +
+        "\"openapi\":\"3.0.3\"," +
+        "\"info\":{\"title\":\"Pets\",\"version\":\"1.0.0\"}," +
+        "\"paths\":{\"/pets\":{\"get\":{\"operationId\":\"listPets\",\"responses\":{\"200\":{\"description\":\"ok\",\"content\":{\"application/json\":{\"schema\":{\"$ref\":\"./schemas/pet.json#/Pet\"}}}}}}},\"/pets/search\":{\"post\":{\"operationId\":\"listPets\",\"responses\":{\"200\":{\"description\":\"ok\",\"content\":{\"application/json\":{\"schema\":{\"$ref\":\"#/components/schemas/MissingPet\"}}}}}}}}" +
+        "}";
 
-        private const string MissingOpenApiVersionJson = """
+    private const string MissingOpenApiVersionJson = """
                 {
                     "info": {
                         "title": "Pets",
@@ -524,7 +524,7 @@ public class ApiSpecificationLoaderTests
         paths: {}
         """;
 
-        private const string UnsupportedOpenApiYaml = """
+    private const string UnsupportedOpenApiYaml = """
                 openapi: 3.2.0
                 info:
                     title: Pets
@@ -555,7 +555,7 @@ public class ApiSpecificationLoaderTests
         "\"paths\":{\"/pets\":{\"get\":{\"responses\":{\"200\":{\"description\":\"ok\",\"content\":{\"application/json\":{\"schema\":{\"$ref\":\"./schemas/pet.json#/Pet\"}}}}}}}}" +
         "}";
 
-        private const string InternalReferenceJson = """
+    private const string InternalReferenceJson = """
                 {
                     "openapi": "3.0.3",
                     "info": {
@@ -590,7 +590,7 @@ public class ApiSpecificationLoaderTests
                 }
                 """;
 
-        private const string MissingInternalReferenceJson = """
+    private const string MissingInternalReferenceJson = """
                 {
                     "openapi": "3.0.3",
                     "info": {

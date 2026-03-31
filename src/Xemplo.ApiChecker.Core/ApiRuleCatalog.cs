@@ -2,6 +2,8 @@ namespace Xemplo.ApiChecker.Core;
 
 public static class ApiRuleCatalog
 {
+    private static readonly IReadOnlyList<ApiRuleDescriptor> EmptyDescriptors = Array.AsReadOnly(Array.Empty<ApiRuleDescriptor>());
+
     private static readonly ApiRuleDescriptor[] RuleDescriptors =
     [
         new(ApiRuleId.NewRequiredInput, "input:new:required", ApiRuleFamily.Input, ApiSeverity.Error),
@@ -29,12 +31,14 @@ public static class ApiRuleCatalog
     private static readonly IReadOnlyDictionary<string, ApiRuleDescriptor> DescriptorsByIdentifier =
         RuleDescriptors.ToDictionary(static descriptor => descriptor.Identifier, StringComparer.OrdinalIgnoreCase);
 
-    private static readonly IReadOnlyDictionary<ApiRuleFamily, ApiRuleDescriptor[]> DescriptorsByFamily =
+    private static readonly IReadOnlyDictionary<ApiRuleFamily, IReadOnlyList<ApiRuleDescriptor>> DescriptorsByFamily =
         RuleDescriptors
             .GroupBy(static descriptor => descriptor.Family)
-            .ToDictionary(static group => group.Key, static group => group.ToArray());
+            .ToDictionary(
+                static group => group.Key,
+                static group => (IReadOnlyList<ApiRuleDescriptor>)Array.AsReadOnly(group.ToArray()));
 
-    public static IReadOnlyList<ApiRuleDescriptor> All { get; } = RuleDescriptors;
+    public static IReadOnlyList<ApiRuleDescriptor> All { get; } = Array.AsReadOnly(RuleDescriptors);
 
     public static ApiRuleDescriptor GetDescriptor(ApiRuleId ruleId)
     {
@@ -47,7 +51,7 @@ public static class ApiRuleCatalog
     {
         return DescriptorsByFamily.TryGetValue(family, out var descriptors)
             ? descriptors
-            : [];
+            : EmptyDescriptors;
     }
 
     public static bool TryGetDescriptor(string? identifier, out ApiRuleDescriptor descriptor)
