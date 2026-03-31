@@ -212,7 +212,8 @@ public sealed class ApiSpecificationLoader : IApiSpecificationLoader
             .Select(group => new ApiSpecificationLoadFailure(
                 ApiSpecificationLoadFailureKind.DuplicateOperationId,
                 $"Duplicate operationId '{group.Key}' is used by {string.Join(", ", group.OrderBy(static operation => operation.Path, StringComparer.OrdinalIgnoreCase).ThenBy(static operation => operation.Method, StringComparer.Ordinal).Select(static operation => $"{operation.Method} {operation.Path}"))}.",
-                source))
+                source,
+                group.Key))
             .ToArray();
     }
 
@@ -248,7 +249,8 @@ public sealed class ApiSpecificationLoader : IApiSpecificationLoader
                         new ApiSpecificationLoadFailure(
                             ApiSpecificationLoadFailureKind.ExternalReferencesNotSupported,
                             $"External $ref target '{reference}' is not supported in v1 at {propertyPath}.",
-                            source));
+                            source,
+                            reference));
                 }
 
                 if (property.Value is not null)

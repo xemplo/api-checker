@@ -6,8 +6,12 @@ public static class ApiRuleCatalog
     [
         new(ApiRuleId.NewRequiredInput, "input:new:required", ApiRuleFamily.Input, ApiSeverity.Error),
         new(ApiRuleId.NewOptionalInput, "input:new:optional", ApiRuleFamily.Input, ApiSeverity.Warning),
+        new(ApiRuleId.UpdatedRequiredInput, "input:updated:required", ApiRuleFamily.Input, ApiSeverity.Error),
+        new(ApiRuleId.UpdatedOptionalInput, "input:updated:optional", ApiRuleFamily.Input, ApiSeverity.Warning),
         new(ApiRuleId.NewNullableOutput, "output:new:nullable", ApiRuleFamily.Output, ApiSeverity.Warning),
         new(ApiRuleId.NewNonNullableOutput, "output:new:non-nullable", ApiRuleFamily.Output, ApiSeverity.Warning),
+        new(ApiRuleId.UpdatedNullableOutput, "output:updated:nullable", ApiRuleFamily.Output, ApiSeverity.Warning),
+        new(ApiRuleId.UpdatedNonNullableOutput, "output:updated:non-nullable", ApiRuleFamily.Output, ApiSeverity.Warning),
         new(ApiRuleId.NewEnumOutput, "output:new:enum-value", ApiRuleFamily.Output, ApiSeverity.Warning),
         new(ApiRuleId.NewRequiredQueryParam, "query:new:required", ApiRuleFamily.Query, ApiSeverity.Error),
         new(ApiRuleId.NewOptionalQueryParam, "query:new:optional", ApiRuleFamily.Query, ApiSeverity.Warning),
@@ -15,6 +19,7 @@ public static class ApiRuleCatalog
         new(ApiRuleId.RemovedOutput, "output:removed", ApiRuleFamily.Output, ApiSeverity.Error),
         new(ApiRuleId.NewResponseCode, "response:new:status-code", ApiRuleFamily.Response, ApiSeverity.Warning),
         new(ApiRuleId.NewEndpoint, "endpoint:new", ApiRuleFamily.Endpoint, ApiSeverity.Warning),
+        new(ApiRuleId.UpdatedEndpointId, "endpoint:updated:id", ApiRuleFamily.Endpoint, ApiSeverity.Warning),
         new(ApiRuleId.EndpointRemoved, "endpoint:removed", ApiRuleFamily.Endpoint, ApiSeverity.Error)
     ];
 

@@ -12,8 +12,12 @@ public class ApiComparisonContractsTests
         {
             "input:new:required",
             "input:new:optional",
+            "input:updated:required",
+            "input:updated:optional",
             "output:new:nullable",
             "output:new:non-nullable",
+            "output:updated:nullable",
+            "output:updated:non-nullable",
             "output:new:enum-value",
             "query:new:required",
             "query:new:optional",
@@ -21,6 +25,7 @@ public class ApiComparisonContractsTests
             "output:removed",
             "response:new:status-code",
             "endpoint:new",
+            "endpoint:updated:id",
             "endpoint:removed"
         };
 
@@ -51,8 +56,12 @@ public class ApiComparisonContractsTests
 
         Assert.Equal(ApiSeverity.Error, profile.GetSeverity(ApiRuleId.NewRequiredInput));
         Assert.Equal(ApiSeverity.Warning, profile.GetSeverity(ApiRuleId.NewOptionalInput));
+        Assert.Equal(ApiSeverity.Error, profile.GetSeverity(ApiRuleId.UpdatedRequiredInput));
+        Assert.Equal(ApiSeverity.Warning, profile.GetSeverity(ApiRuleId.UpdatedOptionalInput));
         Assert.Equal(ApiSeverity.Warning, profile.GetSeverity(ApiRuleId.NewNullableOutput));
         Assert.Equal(ApiSeverity.Warning, profile.GetSeverity(ApiRuleId.NewNonNullableOutput));
+        Assert.Equal(ApiSeverity.Warning, profile.GetSeverity(ApiRuleId.UpdatedNullableOutput));
+        Assert.Equal(ApiSeverity.Warning, profile.GetSeverity(ApiRuleId.UpdatedNonNullableOutput));
         Assert.Equal(ApiSeverity.Warning, profile.GetSeverity(ApiRuleId.NewEnumOutput));
         Assert.Equal(ApiSeverity.Error, profile.GetSeverity(ApiRuleId.NewRequiredQueryParam));
         Assert.Equal(ApiSeverity.Warning, profile.GetSeverity(ApiRuleId.NewOptionalQueryParam));
@@ -60,6 +69,7 @@ public class ApiComparisonContractsTests
         Assert.Equal(ApiSeverity.Error, profile.GetSeverity(ApiRuleId.RemovedOutput));
         Assert.Equal(ApiSeverity.Warning, profile.GetSeverity(ApiRuleId.NewResponseCode));
         Assert.Equal(ApiSeverity.Warning, profile.GetSeverity(ApiRuleId.NewEndpoint));
+        Assert.Equal(ApiSeverity.Warning, profile.GetSeverity(ApiRuleId.UpdatedEndpointId));
         Assert.Equal(ApiSeverity.Error, profile.GetSeverity(ApiRuleId.EndpointRemoved));
     }
 

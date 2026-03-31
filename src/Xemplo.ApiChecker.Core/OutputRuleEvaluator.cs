@@ -41,6 +41,7 @@ internal sealed class OutputRuleEvaluator : IApiRuleEvaluator
                 if (oldNodes.TryGetValue(newNode.SchemaPath, out var oldNode)
                     && oldNode.Usage != ApiSchemaUsage.Excluded)
                 {
+                    AddUpdatedOutputFinding(oldNode, newNode, ruleProfile, responseMatch.NewResponse.OperationIdentity, findings);
                     AddNewEnumOutputFindings(oldNode, newNode, ruleProfile, responseMatch.NewResponse.OperationIdentity, findings);
                     continue;
                 }
@@ -174,6 +175,45 @@ internal sealed class OutputRuleEvaluator : IApiRuleEvaluator
             {
                 findings.Add(finding);
             }
+        }
+    }
+
+    private static void AddUpdatedOutputFinding(
+        ApiJsonSchemaNode oldNode,
+        ApiJsonSchemaNode newNode,
+        ApiRuleProfile ruleProfile,
+        ApiOperationIdentity operation,
+        ICollection<ApiFinding> findings)
+    {
+        if (oldNode.Usage != ApiSchemaUsage.Included
+            || newNode.Usage != ApiSchemaUsage.Included
+            || oldNode.Nullable == ApiSchemaCondition.Ambiguous
+            || newNode.Nullable == ApiSchemaCondition.Ambiguous
+            || oldNode.Nullable == newNode.Nullable)
+        {
+            return;
+        }
+
+        var finding = newNode.Nullable switch
+        {
+            ApiSchemaCondition.True => ApiRuleEvaluationHelpers.CreateFinding(
+                ApiRuleId.UpdatedNullableOutput,
+                ruleProfile,
+                $"Response field '{newNode.SchemaPath}' changed from non-nullable output to nullable output.",
+                operation,
+                newNode.SchemaPath),
+            ApiSchemaCondition.False => ApiRuleEvaluationHelpers.CreateFinding(
+                ApiRuleId.UpdatedNonNullableOutput,
+                ruleProfile,
+                $"Response field '{newNode.SchemaPath}' changed from nullable output to non-nullable output.",
+                operation,
+                newNode.SchemaPath),
+            _ => null
+        };
+
+        if (finding is not null)
+        {
+            findings.Add(finding);
         }
     }
 }

@@ -477,7 +477,7 @@ public class CliApplicationTests
             Assert.Equal(2, exitCode);
             Assert.Equal(string.Empty, output.ToString());
             Assert.Contains("Failed to load new specification", error.ToString());
-            Assert.Contains("- \u001b[31mERROR\u001b[0m Duplicate operationId 'listPets' is used by GET /pets, POST /pets/search.", error.ToString());
+            Assert.Contains("- \u001b[31mERROR\u001b[0m Duplicate operationId '\u001b[38;5;208mlistPets\u001b[0m' is used by GET /pets, POST /pets/search.", error.ToString());
             Assert.Contains("listPets", error.ToString());
         }
         finally
@@ -512,7 +512,8 @@ public class CliApplicationTests
                 new ApiSpecificationLoadFailure(
                     ApiSpecificationLoadFailureKind.DuplicateOperationId,
                     "Duplicate operationId 'listPets' is used by GET /pets, POST /pets/search.",
-                    "new.json")));
+                    "new.json",
+                    "listPets")));
 
         var exitCode = await CliApplication.RunAsync(
             ["--old", "old.json", "--new", "new.json"],
@@ -527,7 +528,38 @@ public class CliApplicationTests
         Assert.Contains("Failed to load new specification 'new.json':", error.ToString());
         Assert.Contains("- \u001b[31mERROR\u001b[0m Specification file was not found.", error.ToString());
         Assert.Contains("- \u001b[31mERROR\u001b[0m Failed to parse specification: extra trailing content.", error.ToString());
-        Assert.Contains("- \u001b[31mERROR\u001b[0m Duplicate operationId 'listPets' is used by GET /pets, POST /pets/search.", error.ToString());
+        Assert.Contains("- \u001b[31mERROR\u001b[0m Duplicate operationId '\u001b[38;5;208mlistPets\u001b[0m' is used by GET /pets, POST /pets/search.", error.ToString());
+        engine.DidNotReceive().Compare(Arg.Any<ApiComparisonInput>(), Arg.Any<ApiRuleProfile>());
+    }
+
+    [Fact]
+    public async Task RunAsync_WithHighlightedValidationSubject_ColorsOnlyTheSubject()
+    {
+        var loader = Substitute.For<IApiSpecificationLoader>();
+        var engine = Substitute.For<IApiComparisonEngine>();
+        var output = new StringWriter();
+        var error = new StringWriter();
+
+        loader.LoadAsync("old.json", Arg.Any<CancellationToken>())
+            .Returns(ApiSpecificationLoadResult.Fail(
+                new ApiSpecificationLoadFailure(
+                    ApiSpecificationLoadFailureKind.DuplicateOperationId,
+                    "Duplicate operationId 'listPets' is used by GET /pets, POST /pets/search.",
+                    "old.json",
+                    "listPets")));
+        loader.LoadAsync("new.json", Arg.Any<CancellationToken>())
+            .Returns(ApiSpecificationLoadResult.Success(new ApiSpecificationDocument(new OpenApiDocument(), "new.json")));
+
+        var exitCode = await CliApplication.RunAsync(
+            ["--old", "old.json", "--new", "new.json"],
+            output,
+            error,
+            loader,
+            engine);
+
+        Assert.Equal(2, exitCode);
+        Assert.Contains("\u001b[38;5;208mlistPets\u001b[0m", error.ToString());
+        Assert.DoesNotContain("\u001b[38;5;208mGET /pets\u001b[0m", error.ToString());
         engine.DidNotReceive().Compare(Arg.Any<ApiComparisonInput>(), Arg.Any<ApiRuleProfile>());
     }
 

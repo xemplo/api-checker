@@ -4,8 +4,12 @@ public enum ApiRuleId
 {
     NewRequiredInput,
     NewOptionalInput,
+    UpdatedRequiredInput,
+    UpdatedOptionalInput,
     NewNullableOutput,
     NewNonNullableOutput,
+    UpdatedNullableOutput,
+    UpdatedNonNullableOutput,
     NewEnumOutput,
     NewRequiredQueryParam,
     NewOptionalQueryParam,
@@ -13,5 +17,6 @@ public enum ApiRuleId
     RemovedOutput,
     NewResponseCode,
     NewEndpoint,
+    UpdatedEndpointId,
     EndpointRemoved
 }

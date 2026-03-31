@@ -5,6 +5,7 @@ namespace Xemplo.ApiChecker.Cli;
 public static class CliApplication
 {
     private const string RedErrorLabel = "\u001b[31mERROR\u001b[0m";
+    private const string OrangeSubjectFormat = "\u001b[38;5;208m{0}\u001b[0m";
 
     public static async Task<int> RunAsync(
         string[] args,
@@ -73,8 +74,27 @@ public static class CliApplication
 
         foreach (var failure in result.Failures)
         {
-            await error.WriteLineAsync($"- {RedErrorLabel} {failure.Message}");
+            await error.WriteLineAsync($"- {RedErrorLabel} {FormatFailureMessage(failure)}");
         }
+    }
+
+    private static string FormatFailureMessage(ApiSpecificationLoadFailure failure)
+    {
+        if (string.IsNullOrWhiteSpace(failure.HighlightedSubject))
+        {
+            return failure.Message;
+        }
+
+        var subjectIndex = failure.Message.IndexOf(failure.HighlightedSubject, StringComparison.Ordinal);
+        if (subjectIndex < 0)
+        {
+            return failure.Message;
+        }
+
+        return string.Concat(
+            failure.Message.AsSpan(0, subjectIndex),
+            string.Format(OrangeSubjectFormat, failure.HighlightedSubject),
+            failure.Message.AsSpan(subjectIndex + failure.HighlightedSubject.Length));
     }
 
     private static async Task<ApiRuleProfile> ResolveRuleProfileAsync(

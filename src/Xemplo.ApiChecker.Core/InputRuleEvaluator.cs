@@ -42,6 +42,7 @@ internal sealed class InputRuleEvaluator : IApiRuleEvaluator
             if (oldNodes.TryGetValue(newNode.SchemaPath, out var oldNode)
                 && oldNode.Usage != ApiSchemaUsage.Excluded)
             {
+                AddUpdatedInputFinding(oldNode, newNode, ruleProfile, operationMatch.NewOperation.Identity, findings);
                 continue;
             }
 
@@ -134,6 +135,49 @@ internal sealed class InputRuleEvaluator : IApiRuleEvaluator
             $"Request field '{node.SchemaPath}' was removed.",
             operation,
             node.SchemaPath);
+
+        if (finding is not null)
+        {
+            findings.Add(finding);
+        }
+    }
+
+    private static void AddUpdatedInputFinding(
+        ApiJsonSchemaNode oldNode,
+        ApiJsonSchemaNode newNode,
+        ApiRuleProfile ruleProfile,
+        ApiOperationIdentity operation,
+        ICollection<ApiFinding> findings)
+    {
+        if (oldNode.Usage != ApiSchemaUsage.Included
+            || newNode.Usage != ApiSchemaUsage.Included
+            || oldNode.Required == ApiSchemaCondition.Ambiguous
+            || newNode.Required == ApiSchemaCondition.Ambiguous)
+        {
+            return;
+        }
+
+        if (oldNode.Required == newNode.Required)
+        {
+            return;
+        }
+
+        var finding = newNode.Required switch
+        {
+            ApiSchemaCondition.True => ApiRuleEvaluationHelpers.CreateFinding(
+                ApiRuleId.UpdatedRequiredInput,
+                ruleProfile,
+                $"Request field '{newNode.SchemaPath}' changed from optional input to required input.",
+                operation,
+                newNode.SchemaPath),
+            ApiSchemaCondition.False => ApiRuleEvaluationHelpers.CreateFinding(
+                ApiRuleId.UpdatedOptionalInput,
+                ruleProfile,
+                $"Request field '{newNode.SchemaPath}' changed from required input to optional input.",
+                operation,
+                newNode.SchemaPath),
+            _ => null
+        };
 
         if (finding is not null)
         {

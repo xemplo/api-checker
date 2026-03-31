@@ -1,5 +1,6 @@
 using Xemplo.ApiChecker.Core;
 using Microsoft.OpenApi.Models;
+using NSubstitute;
 
 namespace Xemplo.ApiChecker.Core.Tests;
 
@@ -80,6 +81,38 @@ public class ApiComparisonEngineTests
         Assert.Equal(ApiRuleId.NewRequiredInput, finding.RuleId);
         Assert.Equal(ApiSeverity.Error, finding.Severity);
         Assert.Equal("$.serverAssigned", finding.SchemaPath);
+    }
+
+    [Fact]
+    public void Compare_WhenExistingRequestFieldBecomesRequired_ReportsUpdatedRequiredInput()
+    {
+        var engine = new ApiComparisonEngine();
+        var input = new ApiComparisonInput(
+            CreateSpecification(CreateRequestBodyOperation(CreateObjectSchema(("name", CreateScalarSchema(), false)))),
+            CreateSpecification(CreateRequestBodyOperation(CreateObjectSchema(("name", CreateScalarSchema(), true)))));
+
+        var finding = Assert.Single(engine.Compare(input, ApiRuleProfile.Default).Findings);
+
+        Assert.Equal(ApiRuleId.UpdatedRequiredInput, finding.RuleId);
+        Assert.Equal(ApiSeverity.Error, finding.Severity);
+        Assert.Equal("$.name", finding.SchemaPath);
+        Assert.Contains("optional input to required input", finding.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Compare_WhenExistingRequestFieldBecomesOptional_ReportsUpdatedOptionalInput()
+    {
+        var engine = new ApiComparisonEngine();
+        var input = new ApiComparisonInput(
+            CreateSpecification(CreateRequestBodyOperation(CreateObjectSchema(("name", CreateScalarSchema(), true)))),
+            CreateSpecification(CreateRequestBodyOperation(CreateObjectSchema(("name", CreateScalarSchema(), false)))));
+
+        var finding = Assert.Single(engine.Compare(input, ApiRuleProfile.Default).Findings);
+
+        Assert.Equal(ApiRuleId.UpdatedOptionalInput, finding.RuleId);
+        Assert.Equal(ApiSeverity.Warning, finding.Severity);
+        Assert.Equal("$.name", finding.SchemaPath);
+        Assert.Contains("required input to optional input", finding.Message, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -210,6 +243,48 @@ public class ApiComparisonEngineTests
     }
 
     [Fact]
+    public void Compare_WhenExistingResponseFieldBecomesNullable_ReportsUpdatedNullableOutput()
+    {
+        var oldSchema = CreateObjectSchema(("summary", CreateScalarSchema(), false));
+        var newSchema = CreateObjectSchema(("summary", CreateScalarSchema(), false));
+        var analyzer = CreateSchemaAnalyzer(
+            (oldSchema, ApiSchemaContext.Response, CreateAnalysis(("$.summary", ApiSchemaCondition.False, ApiSchemaCondition.False))),
+            (newSchema, ApiSchemaContext.Response, CreateAnalysis(("$.summary", ApiSchemaCondition.False, ApiSchemaCondition.True))));
+        var engine = new ApiComparisonEngine(schemaAnalyzer: analyzer);
+        var input = new ApiComparisonInput(
+            CreateSpecification(CreateResponseBodyOperation(oldSchema)),
+            CreateSpecification(CreateResponseBodyOperation(newSchema)));
+
+        var finding = Assert.Single(engine.Compare(input, ApiRuleProfile.Default).Findings);
+
+        Assert.Equal(ApiRuleId.UpdatedNullableOutput, finding.RuleId);
+        Assert.Equal(ApiSeverity.Warning, finding.Severity);
+        Assert.Equal("$.summary", finding.SchemaPath);
+        Assert.Contains("non-nullable output to nullable output", finding.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Compare_WhenExistingResponseFieldBecomesNonNullable_ReportsUpdatedNonNullableOutput()
+    {
+        var oldSchema = CreateObjectSchema(("summary", CreateScalarSchema(), false));
+        var newSchema = CreateObjectSchema(("summary", CreateScalarSchema(), false));
+        var analyzer = CreateSchemaAnalyzer(
+            (oldSchema, ApiSchemaContext.Response, CreateAnalysis(("$.summary", ApiSchemaCondition.False, ApiSchemaCondition.True))),
+            (newSchema, ApiSchemaContext.Response, CreateAnalysis(("$.summary", ApiSchemaCondition.False, ApiSchemaCondition.False))));
+        var engine = new ApiComparisonEngine(schemaAnalyzer: analyzer);
+        var input = new ApiComparisonInput(
+            CreateSpecification(CreateResponseBodyOperation(oldSchema)),
+            CreateSpecification(CreateResponseBodyOperation(newSchema)));
+
+        var finding = Assert.Single(engine.Compare(input, ApiRuleProfile.Default).Findings);
+
+        Assert.Equal(ApiRuleId.UpdatedNonNullableOutput, finding.RuleId);
+        Assert.Equal(ApiSeverity.Warning, finding.Severity);
+        Assert.Equal("$.summary", finding.SchemaPath);
+        Assert.Contains("nullable output to non-nullable output", finding.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task Compare_EndpointAndResponseCodeFixtures_ProducesExpectedFindings()
     {
         var engine = new ApiComparisonEngine();
@@ -266,6 +341,23 @@ public class ApiComparisonEngineTests
                 Assert.Equal("POST", finding.Operation!.Method);
                 Assert.Equal("/pets", finding.Operation.PathTemplate);
             });
+    }
+
+    [Fact]
+    public void Compare_WhenOperationIdChanges_ReportsUpdatedEndpointId()
+    {
+        var engine = new ApiComparisonEngine();
+        var oldSpecification = CreateSpecification(CreateGetOperation(operationId: "listPets"), method: System.Net.Http.HttpMethod.Get);
+        var newSpecification = CreateSpecification(CreateGetOperation(operationId: "getPets"), method: System.Net.Http.HttpMethod.Get);
+
+        var finding = Assert.Single(engine.Compare(new ApiComparisonInput(oldSpecification, newSpecification), ApiRuleProfile.Default).Findings);
+
+        Assert.Equal(ApiRuleId.UpdatedEndpointId, finding.RuleId);
+        Assert.Equal(ApiSeverity.Warning, finding.Severity);
+        Assert.Equal("GET", finding.Operation!.Method);
+        Assert.Equal("/pets", finding.Operation.PathTemplate);
+        Assert.Contains("listPets", finding.Message, StringComparison.Ordinal);
+        Assert.Contains("getPets", finding.Message, StringComparison.Ordinal);
     }
 
     private static async Task<ApiComparisonInput> LoadRequestBodyFixturePairAsync()
@@ -332,11 +424,31 @@ public class ApiComparisonEngineTests
         };
     }
 
-    private static OpenApiOperation CreateGetOperation(
-        IReadOnlyList<Microsoft.OpenApi.Models.Interfaces.IOpenApiParameter>? operationParameters = null)
+    private static OpenApiOperation CreateResponseBodyOperation(OpenApiSchema responseSchema)
     {
         return new OpenApiOperation
         {
+            Responses = new OpenApiResponses
+            {
+                ["200"] = new OpenApiResponse
+                {
+                    Description = "ok",
+                    Content = new Dictionary<string, OpenApiMediaType>
+                    {
+                        ["application/json"] = new() { Schema = responseSchema }
+                    }
+                }
+            }
+        };
+    }
+
+    private static OpenApiOperation CreateGetOperation(
+        IReadOnlyList<Microsoft.OpenApi.Models.Interfaces.IOpenApiParameter>? operationParameters = null,
+        string? operationId = null)
+    {
+        return new OpenApiOperation
+        {
+            OperationId = operationId,
             Parameters = operationParameters is null ? [] : [.. operationParameters],
             Responses = new OpenApiResponses
             {
@@ -365,13 +477,16 @@ public class ApiComparisonEngineTests
         return schema;
     }
 
-    private static OpenApiSchema CreateScalarSchema(bool readOnly = false)
+    private static OpenApiSchema CreateScalarSchema(bool readOnly = false, bool nullable = false)
     {
-        return new OpenApiSchema
+        var schema = new OpenApiSchema
         {
             ReadOnly = readOnly,
             Type = JsonSchemaType.String
         };
+
+        SetNullable(schema, nullable);
+        return schema;
     }
 
     private static OpenApiSchema CreateOneOfScalarSchema()
@@ -403,5 +518,78 @@ public class ApiComparisonEngineTests
             Required = required,
             Schema = schema
         };
+    }
+
+    private static void SetNullable(OpenApiSchema schema, bool value)
+    {
+        var property = typeof(OpenApiSchema).GetProperty("Nullable");
+        if (property is not null)
+        {
+            if (property.PropertyType == typeof(bool))
+            {
+                property.SetValue(schema, value);
+                return;
+            }
+
+            if (property.PropertyType == typeof(bool?))
+            {
+                property.SetValue(schema, (bool?)value);
+                return;
+            }
+        }
+
+        if (!value)
+        {
+            return;
+        }
+
+        var typeProperty = typeof(OpenApiSchema).GetProperty("Type");
+        if (typeProperty?.PropertyType == typeof(string))
+        {
+            typeProperty.SetValue(schema, "string,null");
+            return;
+        }
+
+        if (typeProperty?.PropertyType.IsEnum == true)
+        {
+            var stringValue = Enum.Parse(typeProperty.PropertyType, "String", ignoreCase: true);
+            var nullValue = Enum.Parse(typeProperty.PropertyType, "Null", ignoreCase: true);
+            var combinedValue = Convert.ToUInt64(stringValue) | Convert.ToUInt64(nullValue);
+            typeProperty.SetValue(schema, Enum.ToObject(typeProperty.PropertyType, combinedValue));
+        }
+    }
+
+    private static IApiJsonSchemaAnalyzer CreateSchemaAnalyzer(
+        params (OpenApiSchema Schema, ApiSchemaContext Context, ApiJsonSchemaAnalysis Analysis)[] mappings)
+    {
+        var analyzer = Substitute.For<IApiJsonSchemaAnalyzer>();
+
+        analyzer.Analyze(Arg.Any<Microsoft.OpenApi.Models.Interfaces.IOpenApiSchema?>(), Arg.Any<ApiSchemaContext>(), Arg.Any<string>())
+            .Returns(ApiJsonSchemaAnalysis.Empty);
+
+        foreach (var (schema, context, analysis) in mappings)
+        {
+            analyzer.Analyze(
+                Arg.Is<Microsoft.OpenApi.Models.Interfaces.IOpenApiSchema?>(candidate => ReferenceEquals(candidate, schema)),
+                context,
+                Arg.Any<string>())
+                .Returns(analysis);
+        }
+
+        return analyzer;
+    }
+
+    private static ApiJsonSchemaAnalysis CreateAnalysis(params (string Path, ApiSchemaCondition Required, ApiSchemaCondition Nullable)[] nodes)
+    {
+        return new ApiJsonSchemaAnalysis(nodes.Select(node => new ApiJsonSchemaNode(
+            node.Path,
+            node.Path.Split('.', StringSplitOptions.RemoveEmptyEntries).LastOrDefault(),
+            ApiJsonSchemaNodeKind.Scalar,
+            ApiSchemaUsage.Included,
+            node.Required,
+            node.Nullable,
+            ApiSchemaCondition.False,
+            Array.Empty<string>(),
+            Array.Empty<string>())).ToArray());
     }
 }
