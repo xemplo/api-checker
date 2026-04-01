@@ -11,6 +11,15 @@ on:
       - 'v*'
   workflow_dispatch:
 
+defaults:
+  run:
+    shell: bash
+
+env:
+  SOLUTION_FILE: Xemplo.ApiChecker.slnx
+  CLI_PROJECT_FILE: ./src/Xemplo.ApiChecker.Cli/Xemplo.ApiChecker.Cli.csproj
+  PACKAGE_OUTPUT_DIR: ./artifacts/packages
+
 jobs:
   build_test:
     name: Build and test
@@ -28,13 +37,13 @@ jobs:
           dotnet-version: 10.0.x
 
       - name: Restore
-        run: dotnet restore Xemplo.ApiChecker.slnx
+        run: dotnet restore "$SOLUTION_FILE"
 
       - name: Build
-        run: dotnet build Xemplo.ApiChecker.slnx --configuration Release --no-restore
+        run: dotnet build "$SOLUTION_FILE" --configuration Release --no-restore
 
       - name: Test
-        run: dotnet test Xemplo.ApiChecker.slnx --configuration Release --no-build --logger "trx;LogFileName=test-results.trx"
+        run: dotnet test "$SOLUTION_FILE" --configuration Release --no-build --logger "trx;LogFileName=test-results.trx"
 
       - name: Upload test results
         if: always()
@@ -71,44 +80,42 @@ jobs:
 
       - name: Calculate package version
         id: version
-        shell: pwsh
         run: |
-          $packageVersion = dotnet tool run dotnet-gitversion -- -output json -showvariable SemVer
-          if ([string]::IsNullOrWhiteSpace($packageVersion)) {
-            throw 'GitVersion did not return a package version.'
-          }
+          packageVersion="$(dotnet tool run dotnet-gitversion -- -output json -showvariable SemVer)"
+          if [[ -z "${packageVersion// }" ]]; then
+            echo "GitVersion did not return a package version." >&2
+            exit 1
+          fi
 
-          Write-Host "Calculated package version: $packageVersion"
-          Add-Content -Path $env:GITHUB_OUTPUT -Value "package_version=$packageVersion"
+          echo "Calculated package version: $packageVersion"
+          echo "package_version=$packageVersion" >> "$GITHUB_OUTPUT"
 
       - name: Pack dotnet tool
-        shell: pwsh
         run: |
-          New-Item -ItemType Directory -Force ./artifacts/packages | Out-Null
-          dotnet pack ./src/Xemplo.ApiChecker.Cli/Xemplo.ApiChecker.Cli.csproj `
-            --configuration Release `
-            --output ./artifacts/packages `
-            /p:Version=${{ steps.version.outputs.package_version }} `
+          mkdir -p "$PACKAGE_OUTPUT_DIR"
+          dotnet pack "$CLI_PROJECT_FILE" \
+            --configuration Release \
+            --output "$PACKAGE_OUTPUT_DIR" \
+            /p:Version=${{ steps.version.outputs.package_version }} \
             /p:PackageVersion=${{ steps.version.outputs.package_version }}
 
       - name: Upload package artifact
         uses: actions/upload-artifact@v4
         with:
           name: tool-package-${{ steps.version.outputs.package_version }}
-          path: ./artifacts/packages/*.nupkg
+          path: ${{ env.PACKAGE_OUTPUT_DIR }}/*.nupkg
           if-no-files-found: error
 
       - name: Publish dotnet tool
         if: env.NUGET_API_KEY != ''
-        shell: pwsh
         run: |
-          dotnet nuget push "./artifacts/packages/*.nupkg" `
-            --source "$env:NUGET_SOURCE" `
-            --api-key "$env:NUGET_API_KEY" `
+          dotnet nuget push "$PACKAGE_OUTPUT_DIR"/*.nupkg \
+            --source "$NUGET_SOURCE" \
+            --api-key "$NUGET_API_KEY" \
             --skip-duplicate
 
       - name: Fail if publish secret is missing
         if: env.NUGET_API_KEY == ''
-        shell: pwsh
         run: |
-          throw 'The NUGET_API_KEY secret is not configured. Set it in the repository secrets before enabling publish runs.'
+          echo "The NUGET_API_KEY secret is not configured. Set it in the repository secrets before enabling publish runs." >&2
+          exit 1
