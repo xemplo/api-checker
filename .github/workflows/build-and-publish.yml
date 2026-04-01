@@ -1,0 +1,121 @@
+name: Build and Publish
+
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  SOLUTION_FILE: Xemplo.ApiChecker.slnx
+  CLI_PROJECT_FILE: ./src/Xemplo.ApiChecker.Cli/Xemplo.ApiChecker.Cli.csproj
+  PACKAGE_OUTPUT_DIR: ./artifacts/packages
+
+jobs:
+  build_test:
+    name: Build and test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Restore
+        run: dotnet restore "$SOLUTION_FILE"
+
+      - name: Build
+        run: dotnet build "$SOLUTION_FILE" --configuration Release --no-restore
+
+      - name: Test
+        run: dotnet test "$SOLUTION_FILE" --configuration Release --no-build --logger "trx;LogFileName=test-results.trx"
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: '**/TestResults/*.trx'
+          if-no-files-found: ignore
+
+  publish_tool:
+    name: Pack and publish tool
+    needs: build_test
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      NUGET_SOURCE: ${{ vars.NUGET_SOURCE || 'https://api.nuget.org/v3/index.json' }}
+      NUGET_USER: ${{ vars.NUGET_USER }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Restore local tools
+        run: dotnet tool restore
+
+      - name: Calculate package version
+        id: version
+        run: |
+          packageVersion="$(dotnet tool run dotnet-gitversion -- -output json -showvariable SemVer)"
+          if [[ -z "${packageVersion// }" ]]; then
+            echo "GitVersion did not return a package version." >&2
+            exit 1
+          fi
+
+          echo "Calculated package version: $packageVersion"
+          echo "package_version=$packageVersion" >> "$GITHUB_OUTPUT"
+
+      - name: Pack dotnet tool
+        run: |
+          mkdir -p "$PACKAGE_OUTPUT_DIR"
+          dotnet pack "$CLI_PROJECT_FILE" \
+            --configuration Release \
+            --output "$PACKAGE_OUTPUT_DIR" \
+            /p:Version=${{ steps.version.outputs.package_version }} \
+            /p:PackageVersion=${{ steps.version.outputs.package_version }}
+
+      - name: Upload package artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: tool-package-${{ steps.version.outputs.package_version }}
+          path: ${{ env.PACKAGE_OUTPUT_DIR }}/*.nupkg
+          if-no-files-found: error
+
+      - name: NuGet login
+        id: login
+        uses: NuGet/login@v1
+        with:
+          user: ${{ env.NUGET_USER }}
+
+      - name: Publish dotnet tool
+        run: |
+          dotnet nuget push "$PACKAGE_OUTPUT_DIR"/*.nupkg \
+            --source "$NUGET_SOURCE" \
+            --api-key "${{ steps.login.outputs.NUGET_API_KEY }}" \
+            --skip-duplicate
