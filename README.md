@@ -58,23 +58,23 @@ Supported severities:
 - `off`
 
 Supported rule identifiers:
-- `input:new:required`
-- `input:new:optional`
-- `input:updated:required`
-- `input:updated:optional`
-- `output:new:nullable`
-- `output:new:non-nullable`
-- `output:updated:nullable`
-- `output:updated:non-nullable`
-- `output:new:enum-value`
-- `query:new:required`
-- `query:new:optional`
-- `input:removed`
-- `output:removed`
-- `response:new:status-code`
-- `endpoint:new`
-- `endpoint:updated:id`
-- `endpoint:removed`
+- `input:new:required` - A new required field has been added to the request body
+- `input:new:optional` - A new optional field has been added to the request body
+- `input:updated:required` - An existing property has changed from optional to required in the request body
+- `input:updated:optional` - An existing property has changed from required to optional in the request body
+- `output:new:nullable` - A new nullable field has been added to the response body
+- `output:new:non-nullable` - A new non-nullable field has been added to the response body
+- `output:updated:nullable` - An existing property has changed from non-nullable to nullable in the response body
+- `output:updated:non-nullable` - An existing property has changed from nullable to non-nullable in the response body
+- `output:new:enum-value` - An existing enum used in the response body has gained a new value
+- `query:new:required` - A new required query parameter has been added
+- `query:new:optional` - A new optional query parameter has been added
+- `input:removed` - A property in the request body has been removed
+- `output:removed` - A property in the response body has been removed
+- `response:new:status-code` - An endpoint now returns an new HTTP status code
+- `endpoint:new` - A new endpoint has been added
+- `endpoint:updated:id` - An existing endpoint operationId has changed
+- `endpoint:removed` - An endpoint has been removed
 
 Example `api-rules.json`:
 
