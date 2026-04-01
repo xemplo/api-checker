@@ -120,3 +120,25 @@ Exit codes:
 ## Contributing
 
 This is currently an early-stage, internal Xemplo tool. Issues may be submitted, but third-party pull requests are not currently being reviewed.
+
+### Builds and Versioning
+
+GitHub Actions will:
+- Build and test all PRs targeting `main`
+- Build, test and publish every commit to `main` as an `alpha` pre-release version such as `0.1.0-alpha.3`
+- Build, test and publish `v<major>.<minor>.<patch>` tags as stable release of `<major>.<minor>.<patch>`
+
+You can also control version increments via :
+  - Because this repo uses squash merges, put the `+semver:` marker in the PR title so it flows into the squashed commit on `main`
+  - If you edit the squash commit message while merging, keep the `+semver:` marker in the final commit subject or body
+  - Use `+semver: patch` for fixes
+  - Use `+semver: minor` for backwards-compatible features
+  - Use `+semver: major` or `+semver: breaking` for breaking changes
+  - Use `+semver: none` or `+semver: skip` when a merged change should not advance the release line
+
+### Recommended Release Flow
+
+1. Merge new features to `main`; each push to `main` publishes the next `alpha` package automatically
+2. Set the intended release size on the PR you merge by putting the `+semver:` marker in the PR's commit message
+3. Branch `release/<target-version>` from `main` when you want an `rc` stabilization lane
+4. Tag the release commit with `v<version>` when you want the stable package published for that line

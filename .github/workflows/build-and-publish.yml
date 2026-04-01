@@ -1,0 +1,114 @@
+name: Build and Publish
+
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+jobs:
+  build_test:
+    name: Build and test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Restore
+        run: dotnet restore Xemplo.ApiChecker.slnx
+
+      - name: Build
+        run: dotnet build Xemplo.ApiChecker.slnx --configuration Release --no-restore
+
+      - name: Test
+        run: dotnet test Xemplo.ApiChecker.slnx --configuration Release --no-build --logger "trx;LogFileName=test-results.trx"
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: '**/TestResults/*.trx'
+          if-no-files-found: ignore
+
+  publish_tool:
+    name: Pack and publish tool
+    needs: build_test
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      NUGET_SOURCE: ${{ vars.NUGET_SOURCE || 'https://api.nuget.org/v3/index.json' }}
+      NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Restore local tools
+        run: dotnet tool restore
+
+      - name: Calculate package version
+        id: version
+        shell: pwsh
+        run: |
+          $packageVersion = dotnet tool run dotnet-gitversion -- -output json -showvariable SemVer
+          if ([string]::IsNullOrWhiteSpace($packageVersion)) {
+            throw 'GitVersion did not return a package version.'
+          }
+
+          Write-Host "Calculated package version: $packageVersion"
+          Add-Content -Path $env:GITHUB_OUTPUT -Value "package_version=$packageVersion"
+
+      - name: Pack dotnet tool
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force ./artifacts/packages | Out-Null
+          dotnet pack ./src/Xemplo.ApiChecker.Cli/Xemplo.ApiChecker.Cli.csproj `
+            --configuration Release `
+            --output ./artifacts/packages `
+            /p:Version=${{ steps.version.outputs.package_version }} `
+            /p:PackageVersion=${{ steps.version.outputs.package_version }}
+
+      - name: Upload package artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: tool-package-${{ steps.version.outputs.package_version }}
+          path: ./artifacts/packages/*.nupkg
+          if-no-files-found: error
+
+      - name: Publish dotnet tool
+        if: env.NUGET_API_KEY != ''
+        shell: pwsh
+        run: |
+          dotnet nuget push "./artifacts/packages/*.nupkg" `
+            --source "$env:NUGET_SOURCE" `
+            --api-key "$env:NUGET_API_KEY" `
+            --skip-duplicate
+
+      - name: Fail if publish secret is missing
+        if: env.NUGET_API_KEY == ''
+        shell: pwsh
+        run: |
+          throw 'The NUGET_API_KEY secret is not configured. Set it in the repository secrets before enabling publish runs.'
