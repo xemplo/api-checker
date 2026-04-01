@@ -1,3 +1,4 @@
+using System.Text;
 using System.Text.Json.Nodes;
 using Microsoft.OpenApi.Models;
 using Microsoft.OpenApi.Reader;
@@ -39,7 +40,9 @@ public sealed class ApiSpecificationLoader : IApiSpecificationLoader
         {
             var jsonNode = ParseAsJsonNode(content);
             var failures = new List<ApiSpecificationLoadFailure>();
+            var equivalentTemplatedPathProcessing = ProcessEquivalentTemplatedPaths(jsonNode, source);
 
+            failures.AddRange(equivalentTemplatedPathProcessing.Failures);
             failures.AddRange(GetExternalReferenceFailures(jsonNode, source));
             failures.AddRange(GetMissingInternalReferenceFailures(jsonNode, source));
 
@@ -62,11 +65,13 @@ public sealed class ApiSpecificationLoader : IApiSpecificationLoader
 
             if (readResult.Diagnostic?.Errors.Count > 0)
             {
-                failures.AddRange(readResult.Diagnostic.Errors.Select(error =>
-                    new ApiSpecificationLoadFailure(
-                        GetDiagnosticFailureKind(error.Message),
-                        FormatDiagnosticFailureMessage(error.Message),
-                        source)));
+                failures.AddRange(readResult.Diagnostic.Errors
+                    .Where(error => !ShouldSuppressEquivalentTemplatedPathDiagnostic(error.Message, equivalentTemplatedPathProcessing.SuppressedSignatures))
+                    .Select(error =>
+                        new ApiSpecificationLoadFailure(
+                            GetDiagnosticFailureKind(error.Message),
+                            FormatDiagnosticFailureMessage(error.Message),
+                            source)));
             }
 
             if (readResult.Document is null)
@@ -218,6 +223,451 @@ public sealed class ApiSpecificationLoader : IApiSpecificationLoader
                 source,
                 group.Key))
             .ToArray();
+    }
+
+    private static EquivalentTemplatedPathProcessingResult ProcessEquivalentTemplatedPaths(JsonNode jsonNode, string source)
+    {
+        if (!TryGetPathsObject(jsonNode, out var pathsObject))
+        {
+            return EquivalentTemplatedPathProcessingResult.Empty;
+        }
+
+        var groups = GetEquivalentTemplatedPathGroups(pathsObject);
+        if (groups.Count == 0)
+        {
+            return EquivalentTemplatedPathProcessingResult.Empty;
+        }
+
+        var failures = new List<ApiSpecificationLoadFailure>();
+        var suppressedSignatures = new HashSet<string>(StringComparer.Ordinal);
+        var normalizedPaths = new JsonObject();
+
+        foreach (var group in groups)
+        {
+            if (group.Paths.Count == 1)
+            {
+                var path = group.Paths[0];
+                normalizedPaths[path.RawPath] = path.PathNode?.DeepClone();
+                continue;
+            }
+
+            if (TryMergeEquivalentTemplatedPathGroup(group, source, out var mergedPath))
+            {
+                normalizedPaths[mergedPath.CanonicalPath] = mergedPath.PathItem;
+                continue;
+            }
+
+            failures.Add(mergedPath.Failure!);
+            suppressedSignatures.Add(group.Signature);
+
+            foreach (var path in group.Paths)
+            {
+                normalizedPaths[path.RawPath] = path.PathNode?.DeepClone();
+            }
+        }
+
+        pathsObject.Parent!.AsObject()["paths"] = normalizedPaths;
+        return new EquivalentTemplatedPathProcessingResult(failures.ToArray(), suppressedSignatures.ToArray());
+    }
+
+    private static bool TryMergeEquivalentTemplatedPathGroup(
+        EquivalentTemplatedPathGroup group,
+        string source,
+        out MergedEquivalentTemplatedPathResult mergedPath)
+    {
+        var canonicalPath = group.Paths
+            .OrderBy(static path => path.RawPath, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(static path => path.RawPath, StringComparer.Ordinal)
+            .First();
+
+        if (canonicalPath.PathItem is not JsonObject canonicalPathItem)
+        {
+            mergedPath = new MergedEquivalentTemplatedPathResult(
+                canonicalPath.RawPath,
+                new JsonObject(),
+                CreateEquivalentTemplatedPathFailure(
+                    group,
+                    $"Equivalent templated paths could not be merged because '{canonicalPath.RawPath}' is not a valid Path Item object.",
+                    source));
+            return false;
+        }
+
+        var mergedPathItem = ClonePathItemForMerge(canonicalPathItem, BuildPathParameterRenameMap(canonicalPath.PathParameterNames, canonicalPath.PathParameterNames));
+
+        foreach (var path in group.Paths.Where(path => path != canonicalPath))
+        {
+            if (path.PathItem is not JsonObject pathItem)
+            {
+                mergedPath = new MergedEquivalentTemplatedPathResult(
+                    canonicalPath.RawPath,
+                    new JsonObject(),
+                    CreateEquivalentTemplatedPathFailure(
+                        group,
+                        $"Equivalent templated paths could not be merged because '{path.RawPath}' is not a valid Path Item object.",
+                        source));
+                return false;
+            }
+
+            var renameMap = BuildPathParameterRenameMap(path.PathParameterNames, canonicalPath.PathParameterNames);
+            if (renameMap.Count > 0 && ContainsReferencedParameters(pathItem))
+            {
+                mergedPath = new MergedEquivalentTemplatedPathResult(
+                    canonicalPath.RawPath,
+                    new JsonObject(),
+                    CreateEquivalentTemplatedPathFailure(
+                        group,
+                        $"Equivalent templated paths could not be merged because '{path.RawPath}' uses referenced parameters that cannot be renamed safely.",
+                        source));
+                return false;
+            }
+
+            var normalizedPathItem = ClonePathItemForMerge(pathItem, renameMap);
+
+            foreach (var property in normalizedPathItem)
+            {
+                if (!IsHttpMethod(property.Key))
+                {
+                    if (!mergedPathItem.ContainsKey(property.Key))
+                    {
+                        mergedPathItem[property.Key] = property.Value?.DeepClone();
+                    }
+
+                    continue;
+                }
+
+                if (mergedPathItem.ContainsKey(property.Key))
+                {
+                    mergedPath = new MergedEquivalentTemplatedPathResult(
+                        canonicalPath.RawPath,
+                        new JsonObject(),
+                        CreateEquivalentTemplatedPathFailure(
+                            group,
+                            $"Equivalent templated paths cannot both define the HTTP method '{property.Key.ToUpperInvariant()}'.",
+                            source));
+                    return false;
+                }
+
+                mergedPathItem[property.Key] = property.Value?.DeepClone();
+            }
+        }
+
+        mergedPath = new MergedEquivalentTemplatedPathResult(canonicalPath.RawPath, mergedPathItem, null);
+        return true;
+    }
+
+    private static JsonObject ClonePathItemForMerge(JsonObject pathItem, IReadOnlyDictionary<string, string> renameMap)
+    {
+        var clone = (JsonObject)pathItem.DeepClone();
+        RenamePathParameters(clone, renameMap);
+        PromotePathItemParametersToOperations(clone);
+        return clone;
+    }
+
+    private static void RenamePathParameters(JsonObject pathItem, IReadOnlyDictionary<string, string> renameMap)
+    {
+        if (renameMap.Count == 0)
+        {
+            return;
+        }
+
+        RenameParameterArray(pathItem["parameters"] as JsonArray, renameMap);
+
+        foreach (var property in pathItem)
+        {
+            if (!IsHttpMethod(property.Key) || property.Value is not JsonObject operation)
+            {
+                continue;
+            }
+
+            RenameParameterArray(operation["parameters"] as JsonArray, renameMap);
+        }
+    }
+
+    private static void RenameParameterArray(JsonArray? parameters, IReadOnlyDictionary<string, string> renameMap)
+    {
+        if (parameters is null)
+        {
+            return;
+        }
+
+        foreach (var parameterNode in parameters)
+        {
+            if (parameterNode is not JsonObject parameter || parameter.ContainsKey("$ref"))
+            {
+                continue;
+            }
+
+            if (parameter.TryGetPropertyValue("in", out var inNode)
+                && string.Equals(inNode?.GetValue<string>(), "path", StringComparison.Ordinal)
+                && parameter.TryGetPropertyValue("name", out var nameNode)
+                && nameNode?.GetValue<string>() is { } name
+                && renameMap.TryGetValue(name, out var renamed)
+                && !string.Equals(name, renamed, StringComparison.Ordinal))
+            {
+                parameter["name"] = renamed;
+            }
+        }
+    }
+
+    private static void PromotePathItemParametersToOperations(JsonObject pathItem)
+    {
+        if (pathItem["parameters"] is not JsonArray sharedParameters)
+        {
+            return;
+        }
+
+        foreach (var property in pathItem)
+        {
+            if (!IsHttpMethod(property.Key) || property.Value is not JsonObject operation)
+            {
+                continue;
+            }
+
+            var operationParameters = operation["parameters"] as JsonArray ?? new JsonArray();
+            foreach (var parameter in sharedParameters)
+            {
+                AppendParameterIfMissing(operationParameters, parameter);
+            }
+
+            operation["parameters"] = operationParameters;
+        }
+
+        pathItem.Remove("parameters");
+    }
+
+    private static void AppendParameterIfMissing(JsonArray destination, JsonNode? parameter)
+    {
+        var identity = GetParameterIdentity(parameter);
+        if (identity is not null && destination.Any(existing => string.Equals(GetParameterIdentity(existing), identity, StringComparison.Ordinal)))
+        {
+            return;
+        }
+
+        destination.Add(parameter?.DeepClone());
+    }
+
+    private static string? GetParameterIdentity(JsonNode? parameter)
+    {
+        if (parameter is not JsonObject parameterObject)
+        {
+            return null;
+        }
+
+        if (parameterObject.TryGetPropertyValue("$ref", out var refNode)
+            && refNode?.GetValue<string>() is { } reference)
+        {
+            return "$ref:" + reference;
+        }
+
+        if (parameterObject.TryGetPropertyValue("name", out var nameNode)
+            && parameterObject.TryGetPropertyValue("in", out var inNode)
+            && nameNode?.GetValue<string>() is { } name
+            && inNode?.GetValue<string>() is { } location)
+        {
+            return location + ":" + name;
+        }
+
+        return null;
+    }
+
+    private static bool ContainsReferencedParameters(JsonObject pathItem)
+    {
+        if (ContainsReferencedParameters(pathItem["parameters"] as JsonArray))
+        {
+            return true;
+        }
+
+        foreach (var property in pathItem)
+        {
+            if (!IsHttpMethod(property.Key) || property.Value is not JsonObject operation)
+            {
+                continue;
+            }
+
+            if (ContainsReferencedParameters(operation["parameters"] as JsonArray))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool ContainsReferencedParameters(JsonArray? parameters)
+    {
+        return parameters is not null
+            && parameters.Any(parameter => parameter is JsonObject parameterObject && parameterObject.ContainsKey("$ref"));
+    }
+
+    private static IReadOnlyDictionary<string, string> BuildPathParameterRenameMap(
+        IReadOnlyList<string> sourceParameterNames,
+        IReadOnlyList<string> targetParameterNames)
+    {
+        if (sourceParameterNames.Count != targetParameterNames.Count)
+        {
+            return new Dictionary<string, string>(StringComparer.Ordinal);
+        }
+
+        var renameMap = new Dictionary<string, string>(StringComparer.Ordinal);
+        for (var index = 0; index < sourceParameterNames.Count; index++)
+        {
+            if (!string.Equals(sourceParameterNames[index], targetParameterNames[index], StringComparison.Ordinal))
+            {
+                renameMap[sourceParameterNames[index]] = targetParameterNames[index];
+            }
+        }
+
+        return renameMap;
+    }
+
+    private static ApiSpecificationLoadFailure CreateEquivalentTemplatedPathFailure(
+        EquivalentTemplatedPathGroup group,
+        string reason,
+        string source)
+    {
+        var operations = group.Paths
+            .SelectMany(static path => path.Methods.Count == 0
+                ? [path.RawPath]
+                : path.Methods.Select(method => $"{method} {path.RawPath}"))
+            .ToArray();
+
+        return new ApiSpecificationLoadFailure(
+            ApiSpecificationLoadFailureKind.ParseFailed,
+            $"Equivalent templated paths {string.Join(", ", operations)} all normalize to the same path signature '{group.Signature}'. {reason}",
+            source,
+            group.Signature);
+    }
+
+    private static bool ShouldSuppressEquivalentTemplatedPathDiagnostic(
+        string message,
+        IReadOnlyList<string> suppressedSignatures)
+    {
+        return TryGetEquivalentTemplatedPathSignature(message, out var signature)
+            && suppressedSignatures.Contains(signature, StringComparer.Ordinal);
+    }
+
+    private static bool TryGetEquivalentTemplatedPathSignature(string message, out string signature)
+    {
+        const string prefix = "The path signature '";
+        const string suffix = "' MUST be unique.";
+
+        signature = string.Empty;
+
+        if (!message.StartsWith(prefix, StringComparison.Ordinal)
+            || !message.EndsWith(suffix, StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        var signatureLength = message.Length - prefix.Length - suffix.Length;
+        if (signatureLength <= 0)
+        {
+            return false;
+        }
+
+        signature = message.Substring(prefix.Length, signatureLength);
+        return true;
+    }
+
+    private static IReadOnlyList<EquivalentTemplatedPathGroup> GetEquivalentTemplatedPathGroups(JsonObject pathsObject)
+    {
+        return pathsObject
+            .Select((path, index) => new EquivalentTemplatedPathEntry(
+                index,
+                path.Key,
+                path.Value,
+                NormalizeTemplatedPath(path.Key),
+                GetPathItemMethods(path.Value as JsonObject),
+                GetPathParameterNames(path.Key)))
+            .GroupBy(static path => path.Signature, StringComparer.Ordinal)
+            .Select(group => new EquivalentTemplatedPathGroup(group.Key, group.OrderBy(static path => path.Index).ToArray()))
+            .OrderBy(static group => group.Paths[0].Index)
+            .ToArray();
+    }
+
+    private static bool TryGetPathsObject(JsonNode jsonNode, out JsonObject pathsObject)
+    {
+        pathsObject = null!;
+
+        if (jsonNode is not JsonObject root
+            || !root.TryGetPropertyValue("paths", out var pathsNode)
+            || pathsNode is not JsonObject paths)
+        {
+            return false;
+        }
+
+        pathsObject = paths;
+        return true;
+    }
+
+    private static IReadOnlyList<string> GetPathParameterNames(string path)
+    {
+        var names = new List<string>();
+        var index = 0;
+
+        while (index < path.Length)
+        {
+            if (path[index] != '{')
+            {
+                index++;
+                continue;
+            }
+
+            var closingBraceIndex = path.IndexOf('}', index + 1);
+            if (closingBraceIndex < 0)
+            {
+                break;
+            }
+
+            names.Add(path[(index + 1)..closingBraceIndex]);
+            index = closingBraceIndex + 1;
+        }
+
+        return names;
+    }
+
+    private static string NormalizeTemplatedPath(string path)
+    {
+        var builder = new StringBuilder(path.Length);
+        var index = 0;
+
+        while (index < path.Length)
+        {
+            if (path[index] == '{')
+            {
+                var closingBraceIndex = path.IndexOf('}', index + 1);
+                if (closingBraceIndex >= 0)
+                {
+                    builder.Append("{}");
+                    index = closingBraceIndex + 1;
+                    continue;
+                }
+            }
+
+            builder.Append(path[index]);
+            index++;
+        }
+
+        return builder.ToString();
+    }
+
+    private static IReadOnlyList<string> GetPathItemMethods(JsonObject? pathItem)
+    {
+        if (pathItem is null)
+        {
+            return [];
+        }
+
+        return pathItem
+            .Where(property => IsHttpMethod(property.Key))
+            .Select(property => property.Key.ToUpperInvariant())
+            .OrderBy(static method => method, StringComparer.Ordinal)
+            .ToArray();
+    }
+
+    private static bool IsHttpMethod(string method)
+    {
+        return method is "get" or "put" or "post" or "delete" or "options" or "head" or "patch" or "trace";
     }
 
     private static IReadOnlyList<ApiSpecificationLoadFailure> GetExternalReferenceFailures(JsonNode jsonNode, string source)
@@ -492,4 +942,29 @@ public sealed class ApiSpecificationLoader : IApiSpecificationLoader
         var scheme = source[..separatorIndex];
         return Uri.CheckSchemeName(scheme);
     }
+
+    private sealed record EquivalentTemplatedPathProcessingResult(
+        IReadOnlyList<ApiSpecificationLoadFailure> Failures,
+        IReadOnlyList<string> SuppressedSignatures)
+    {
+        public static EquivalentTemplatedPathProcessingResult Empty { get; } = new([], []);
+    }
+
+    private sealed record EquivalentTemplatedPathEntry(
+        int Index,
+        string RawPath,
+        JsonNode? PathNode,
+        string Signature,
+        IReadOnlyList<string> Methods,
+        IReadOnlyList<string> PathParameterNames)
+    {
+        public JsonObject? PathItem => PathNode as JsonObject;
+    }
+
+    private sealed record EquivalentTemplatedPathGroup(string Signature, IReadOnlyList<EquivalentTemplatedPathEntry> Paths);
+
+    private sealed record MergedEquivalentTemplatedPathResult(
+        string CanonicalPath,
+        JsonObject PathItem,
+        ApiSpecificationLoadFailure? Failure);
 }

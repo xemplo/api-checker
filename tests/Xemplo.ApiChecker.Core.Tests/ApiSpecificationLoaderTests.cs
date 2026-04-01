@@ -410,6 +410,94 @@ public class ApiSpecificationLoaderTests
     }
 
     [Fact]
+    public async Task LoadAsync_SameTemplatedPathWithDifferentMethods_ReturnsSpecification()
+    {
+        var path = Path.GetTempFileName();
+        await File.WriteAllTextAsync(path, SameTemplatedPathDifferentMethodsJson);
+
+        try
+        {
+            var loader = new ApiSpecificationLoader();
+
+            var result = await loader.LoadAsync(path);
+
+            Assert.True(result.IsSuccess, string.Join(Environment.NewLine, result.Failures.Select(static failure => failure.Message)));
+            Assert.NotNull(result.Specification);
+            Assert.Empty(result.Failures);
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    [Fact]
+    public async Task LoadAsync_EquivalentTemplatedPathsWithDistinctMethods_ReturnsMergedSpecification()
+    {
+        var path = Path.GetTempFileName();
+        await File.WriteAllTextAsync(path, EquivalentTemplatedPathsJson);
+
+        try
+        {
+            var loader = new ApiSpecificationLoader();
+
+            var result = await loader.LoadAsync(path);
+
+            Assert.True(result.IsSuccess, string.Join(Environment.NewLine, result.Failures.Select(static failure => failure.Message)));
+            Assert.NotNull(result.Specification);
+            var specification = result.Specification!;
+            var pathItem = Assert.Single(specification.Document.Paths);
+            Assert.Matches("^/api/v1/instances/\\{[^}]+\\}$", pathItem.Key);
+
+            var canonicalParameterName = pathItem.Key[(pathItem.Key.LastIndexOf('{') + 1)..^1];
+            Assert.NotNull(pathItem.Value);
+            Assert.NotNull(pathItem.Value!.Operations);
+            var operations = pathItem.Value.Operations!;
+
+            Assert.True(operations.ContainsKey(System.Net.Http.HttpMethod.Get));
+            Assert.True(operations.ContainsKey(System.Net.Http.HttpMethod.Put));
+            Assert.True(operations.ContainsKey(System.Net.Http.HttpMethod.Delete));
+
+            var getOperation = operations[System.Net.Http.HttpMethod.Get];
+            var putOperation = operations[System.Net.Http.HttpMethod.Put];
+            Assert.NotNull(getOperation);
+            Assert.NotNull(putOperation);
+            Assert.Contains(getOperation!.Parameters ?? [], parameter => parameter.Name == canonicalParameterName);
+            Assert.Contains(putOperation!.Parameters ?? [], parameter => parameter.Name == canonicalParameterName);
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    [Fact]
+    public async Task LoadAsync_EquivalentTemplatedPathsWithConflictingMethods_ReturnsParseFailure()
+    {
+        var path = Path.GetTempFileName();
+        await File.WriteAllTextAsync(path, EquivalentTemplatedPathsConflictingMethodsJson);
+
+        try
+        {
+            var loader = new ApiSpecificationLoader();
+
+            var result = await loader.LoadAsync(path);
+
+            Assert.False(result.IsSuccess);
+            var failure = Assert.Single(result.Failures);
+            Assert.Equal(ApiSpecificationLoadFailureKind.ParseFailed, failure.Kind);
+            Assert.Contains("GET /api/v1/instances/{id}", failure.Message);
+            Assert.Contains("GET /api/v1/instances/{idOrCode}", failure.Message);
+            Assert.Contains("cannot both define the HTTP method 'GET'", failure.Message);
+            Assert.Equal("/api/v1/instances/{}", failure.HighlightedSubject);
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    [Fact]
     public async Task LoadAsync_WithMultipleValidationIssues_ReturnsAllFailures()
     {
         var path = Path.GetTempFileName();
@@ -498,6 +586,30 @@ public class ApiSpecificationLoaderTests
         "\"openapi\":\"3.0.3\"," +
         "\"info\":{\"title\":\"Pets\",\"version\":\"1.0.0\"}," +
         "\"paths\":{\"/pets\":{\"get\":{\"operationId\":\"listPets\",\"responses\":{\"200\":{\"description\":\"ok\"}}}},\"/pets/search\":{\"post\":{\"operationId\":\"listPets\",\"responses\":{\"200\":{\"description\":\"ok\"}}}}}" +
+        "}";
+
+    private const string SameTemplatedPathDifferentMethodsJson = "{" +
+        "\"openapi\":\"3.0.3\"," +
+        "\"info\":{\"title\":\"Pets\",\"version\":\"1.0.0\"}," +
+        "\"paths\":{\"/pets/{id}\":{\"get\":{\"responses\":{\"200\":{\"description\":\"ok\"}}},\"delete\":{\"responses\":{\"204\":{\"description\":\"deleted\"}}}}}" +
+        "}";
+
+    private const string EquivalentTemplatedPathsJson = "{" +
+        "\"openapi\":\"3.0.3\"," +
+        "\"info\":{\"title\":\"Instances\",\"version\":\"1.0.0\"}," +
+        "\"paths\":{" +
+        "\"/api/v1/instances/{id}\":{\"put\":{\"parameters\":[{\"name\":\"id\",\"in\":\"path\",\"required\":true,\"schema\":{\"type\":\"integer\"}}],\"responses\":{\"200\":{\"description\":\"ok\"}}},\"delete\":{\"parameters\":[{\"name\":\"id\",\"in\":\"path\",\"required\":true,\"schema\":{\"type\":\"integer\"}}],\"responses\":{\"200\":{\"description\":\"ok\"}}}}," +
+        "\"/api/v1/instances/{idOrCode}\":{\"get\":{\"parameters\":[{\"name\":\"idOrCode\",\"in\":\"path\",\"required\":true,\"schema\":{\"type\":\"string\"}}],\"responses\":{\"200\":{\"description\":\"ok\"}}}}" +
+        "}" +
+        "}";
+
+    private const string EquivalentTemplatedPathsConflictingMethodsJson = "{" +
+        "\"openapi\":\"3.0.3\"," +
+        "\"info\":{\"title\":\"Instances\",\"version\":\"1.0.0\"}," +
+        "\"paths\":{" +
+        "\"/api/v1/instances/{id}\":{\"get\":{\"parameters\":[{\"name\":\"id\",\"in\":\"path\",\"required\":true,\"schema\":{\"type\":\"integer\"}}],\"responses\":{\"200\":{\"description\":\"ok\"}}}}," +
+        "\"/api/v1/instances/{idOrCode}\":{\"get\":{\"parameters\":[{\"name\":\"idOrCode\",\"in\":\"path\",\"required\":true,\"schema\":{\"type\":\"string\"}}],\"responses\":{\"200\":{\"description\":\"ok\"}}}}" +
+        "}" +
         "}";
 
     private const string MultiValidationIssueJson = "{" +
