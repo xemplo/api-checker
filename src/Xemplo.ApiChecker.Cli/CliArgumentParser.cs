@@ -126,7 +126,7 @@ public static class CliArgumentParser
     {
         if (args.Length == 1 || string.IsNullOrWhiteSpace(args[1]) || IsOptionToken(args[1]))
         {
-            return CliParseResult.Fail("The validate command requires <spec>.");
+            return CliParseResult.Fail("The validate command requires <path-or-url>.");
         }
 
         if (args.Length > 2)

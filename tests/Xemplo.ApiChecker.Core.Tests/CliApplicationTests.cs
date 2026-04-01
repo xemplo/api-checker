@@ -209,7 +209,7 @@ public class CliApplicationTests
         var result = CliArgumentParser.Parse(["validate"]);
 
         Assert.False(result.IsSuccess);
-        Assert.Equal("The validate command requires <spec>.", result.ErrorMessage);
+        Assert.Equal("The validate command requires <path-or-url>.", result.ErrorMessage);
     }
 
     [Fact]
@@ -218,7 +218,7 @@ public class CliApplicationTests
         var result = CliArgumentParser.Parse(["validate", "--output"]);
 
         Assert.False(result.IsSuccess);
-        Assert.Equal("The validate command requires <spec>.", result.ErrorMessage);
+        Assert.Equal("The validate command requires <path-or-url>.", result.ErrorMessage);
     }
 
     [Fact]
