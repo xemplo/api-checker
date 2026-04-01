@@ -2,21 +2,19 @@ using Xemplo.ApiChecker.Core;
 
 namespace Xemplo.ApiChecker.Cli;
 
-public sealed record CliOptions
+public abstract record CliOptions;
+
+public sealed record CompareCliOptions : CliOptions
 {
-    private CliOptions(
-        CliCommand command,
-        string? compareOldSource,
-        string? compareNewSource,
-        string? specificationSource,
+    public CompareCliOptions(
+        string oldSource,
+        string newSource,
         CliOutputMode outputMode = CliOutputMode.Text,
         string? configPath = null,
         IReadOnlyDictionary<ApiRuleId, ApiSeverity>? ruleOverrides = null)
     {
-        Command = command;
-        OldSource = compareOldSource;
-        NewSource = compareNewSource;
-        SpecificationSource = specificationSource;
+        OldSource = oldSource;
+        NewSource = newSource;
         OutputMode = outputMode;
         ConfigPath = configPath;
         RuleOverrides = ruleOverrides is null
@@ -24,28 +22,9 @@ public sealed record CliOptions
             : new Dictionary<ApiRuleId, ApiSeverity>(ruleOverrides);
     }
 
-    public static CliOptions Compare(
-        string oldSource,
-        string newSource,
-        CliOutputMode outputMode = CliOutputMode.Text,
-        string? configPath = null,
-        IReadOnlyDictionary<ApiRuleId, ApiSeverity>? ruleOverrides = null)
-    {
-        return new CliOptions(CliCommand.Compare, oldSource, newSource, null, outputMode, configPath, ruleOverrides);
-    }
+    public string OldSource { get; }
 
-    public static CliOptions Validate(string specificationSource)
-    {
-        return new CliOptions(CliCommand.Validate, null, null, specificationSource);
-    }
-
-    public CliCommand Command { get; }
-
-    public string? OldSource { get; }
-
-    public string? NewSource { get; }
-
-    public string? SpecificationSource { get; }
+    public string NewSource { get; }
 
     public CliOutputMode OutputMode { get; }
 
@@ -53,3 +32,5 @@ public sealed record CliOptions
 
     public IReadOnlyDictionary<ApiRuleId, ApiSeverity> RuleOverrides { get; }
 }
+
+public sealed record ValidateCliOptions(string SpecificationSource) : CliOptions;

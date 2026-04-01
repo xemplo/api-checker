@@ -14,12 +14,10 @@ public class CliApplicationTests
         var result = CliArgumentParser.Parse(["compare", "--old", "old.json", "--new", "new.json"]);
 
         Assert.True(result.IsSuccess);
-        Assert.NotNull(result.Options);
-        Assert.Equal(CliCommand.Compare, result.Options!.Command);
-        Assert.Equal("old.json", result.Options!.OldSource);
-        Assert.Equal("new.json", result.Options.NewSource);
-        Assert.Null(result.Options.SpecificationSource);
-        Assert.Equal(CliOutputMode.Text, result.Options.OutputMode);
+        var options = Assert.IsType<CompareCliOptions>(result.Options);
+        Assert.Equal("old.json", options.OldSource);
+        Assert.Equal("new.json", options.NewSource);
+        Assert.Equal(CliOutputMode.Text, options.OutputMode);
     }
 
     [Fact]
@@ -28,11 +26,8 @@ public class CliApplicationTests
         var result = CliArgumentParser.Parse(["validate", "spec.json"]);
 
         Assert.True(result.IsSuccess);
-        Assert.NotNull(result.Options);
-        Assert.Equal(CliCommand.Validate, result.Options!.Command);
-        Assert.Equal("spec.json", result.Options.SpecificationSource);
-        Assert.Null(result.Options.OldSource);
-        Assert.Null(result.Options.NewSource);
+        var options = Assert.IsType<ValidateCliOptions>(result.Options);
+        Assert.Equal("spec.json", options.SpecificationSource);
     }
 
     [Fact]
@@ -120,10 +115,11 @@ public class CliApplicationTests
             "--rule", "input:removed=warning"]);
 
         Assert.True(result.IsSuccess);
-        Assert.Equal(CliOutputMode.Json, result.Options!.OutputMode);
-        Assert.Equal("rules.json", result.Options!.ConfigPath);
-        Assert.Equal(ApiSeverity.Off, result.Options.RuleOverrides[ApiRuleId.NewRequiredInput]);
-        Assert.Equal(ApiSeverity.Warning, result.Options.RuleOverrides[ApiRuleId.RemovedInput]);
+        var options = Assert.IsType<CompareCliOptions>(result.Options);
+        Assert.Equal(CliOutputMode.Json, options.OutputMode);
+        Assert.Equal("rules.json", options.ConfigPath);
+        Assert.Equal(ApiSeverity.Off, options.RuleOverrides[ApiRuleId.NewRequiredInput]);
+        Assert.Equal(ApiSeverity.Warning, options.RuleOverrides[ApiRuleId.RemovedInput]);
     }
 
     [Fact]
@@ -324,6 +320,32 @@ public class CliApplicationTests
         Assert.Contains("- \u001b[31mERROR\u001b[0m Bad input.", error.ToString());
         Assert.Equal(string.Empty, output.ToString());
         engine.DidNotReceive().Compare(Arg.Any<ApiComparisonInput>(), Arg.Any<ApiRuleProfile>());
+    }
+
+    [Fact]
+    public async Task RunAsync_WithValidateCommand_DoesNotLoadComparisonConfig()
+    {
+        var directory = CreateTempDirectory();
+        var specPath = Path.Combine(directory, "spec.json");
+        var output = new StringWriter();
+        var error = new StringWriter();
+
+        await File.WriteAllTextAsync(Path.Combine(directory, "api-rules.json"), "{ not-json }");
+        await File.WriteAllTextAsync(specPath, "{\"openapi\":\"3.0.3\",\"info\":{\"title\":\"Spec\",\"version\":\"1.0.0\"},\"paths\":{}}");
+
+        try
+        {
+            var exitCode = await CliApplication.RunAsync(["validate", specPath], output, error, workingDirectory: directory);
+
+            Assert.Equal(0, exitCode);
+            Assert.Contains($"Validated {specPath}", output.ToString());
+            Assert.DoesNotContain("Invalid configuration:", error.ToString());
+            Assert.Equal(string.Empty, error.ToString());
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
     }
 
     [Fact]

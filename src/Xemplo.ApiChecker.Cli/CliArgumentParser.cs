@@ -119,7 +119,7 @@ public static class CliArgumentParser
             return CliParseResult.Fail("Both --old and --new are required.");
         }
 
-        return CliParseResult.Success(CliOptions.Compare(oldSource, newSource, outputMode, configPath, ruleOverrides));
+        return CliParseResult.Success(new CompareCliOptions(oldSource, newSource, outputMode, configPath, ruleOverrides));
     }
 
     private static CliParseResult ParseValidate(string[] args)
@@ -134,7 +134,7 @@ public static class CliArgumentParser
             return CliParseResult.Fail($"Unknown argument '{args[2]}'.");
         }
 
-        return CliParseResult.Success(CliOptions.Validate(args[1]));
+        return CliParseResult.Success(new ValidateCliOptions(args[1]));
     }
 
     private static bool TryReadValue(string[] args, ref int index, out string? value)

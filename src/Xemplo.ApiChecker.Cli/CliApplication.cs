@@ -33,10 +33,10 @@ public static class CliApplication
         {
             loader ??= new ApiSpecificationLoader();
 
-            return parseResult.Options!.Command switch
+            return parseResult.Options switch
             {
-                CliCommand.Compare => await RunCompareAsync(parseResult.Options, output, error, loader, engine, ruleProfile, workingDirectory, cancellationToken),
-                CliCommand.Validate => await RunValidateAsync(parseResult.Options, output, error, loader, cancellationToken),
+                CompareCliOptions compareOptions => await RunCompareAsync(compareOptions, output, error, loader, engine, ruleProfile, workingDirectory, cancellationToken),
+                ValidateCliOptions validateOptions => await RunValidateAsync(validateOptions, output, error, loader, cancellationToken),
                 _ => 2
             };
         }
@@ -53,7 +53,7 @@ public static class CliApplication
     }
 
     private static async Task<int> RunCompareAsync(
-        CliOptions options,
+        CompareCliOptions options,
         TextWriter output,
         TextWriter error,
         IApiSpecificationLoader loader,
@@ -65,13 +65,13 @@ public static class CliApplication
         engine ??= new ApiComparisonEngine();
         ruleProfile ??= await ResolveRuleProfileAsync(options, workingDirectory, cancellationToken);
 
-        var oldResult = await loader.LoadAsync(options.OldSource!, cancellationToken);
-        var newResult = await loader.LoadAsync(options.NewSource!, cancellationToken);
+        var oldResult = await loader.LoadAsync(options.OldSource, cancellationToken);
+        var newResult = await loader.LoadAsync(options.NewSource, cancellationToken);
 
         if (!oldResult.IsSuccess || !newResult.IsSuccess)
         {
-            await WriteLoadFailuresAsync(error, "old", options.OldSource!, oldResult);
-            await WriteLoadFailuresAsync(error, "new", options.NewSource!, newResult);
+            await WriteLoadFailuresAsync(error, "old", options.OldSource, oldResult);
+            await WriteLoadFailuresAsync(error, "new", options.NewSource, newResult);
             return 2;
         }
 
@@ -83,13 +83,13 @@ public static class CliApplication
     }
 
     private static async Task<int> RunValidateAsync(
-        CliOptions options,
+        ValidateCliOptions options,
         TextWriter output,
         TextWriter error,
         IApiSpecificationLoader loader,
         CancellationToken cancellationToken)
     {
-        var source = options.SpecificationSource!;
+        var source = options.SpecificationSource;
         var result = await loader.LoadAsync(source, cancellationToken);
 
         if (!result.IsSuccess)
@@ -142,7 +142,7 @@ public static class CliApplication
     }
 
     private static async Task<ApiRuleProfile> ResolveRuleProfileAsync(
-        CliOptions options,
+        CompareCliOptions options,
         string? workingDirectory,
         CancellationToken cancellationToken)
     {
