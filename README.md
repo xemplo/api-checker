@@ -35,7 +35,7 @@ api-checker --old <path-or-url> --new <path-or-url> [--config <path>] [--output 
 
 ```bash
 # Compare local specs using default compatibility rules
-api-checker --old .\tests\fixtures\request-body-old.json --new .\tests\fixtures\request-body-new.json
+api-checker --old ./tests/fixtures/request-body-old.json --new ./tests/fixtures/request-body-new.json
 
 # Compare online specs using default compatibility rules and JSON output
 api-checker --old https://example.com/openapi-old.yaml --new https://example.com/openapi-new.yaml --output json
@@ -71,7 +71,7 @@ Supported rule identifiers:
 - `query:new:optional` - A new optional query parameter has been added
 - `input:removed` - A property in the request body has been removed
 - `output:removed` - A property in the response body has been removed
-- `response:new:status-code` - An endpoint now returns an new HTTP status code
+- `response:new:status-code` - An endpoint now returns a new HTTP status code
 - `endpoint:new` - A new endpoint has been added
 - `endpoint:updated:id` - An existing endpoint operationId has changed
 - `endpoint:removed` - An endpoint has been removed
