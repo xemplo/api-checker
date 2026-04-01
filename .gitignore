@@ -32,3 +32,4 @@ packages/
 
 # Dotnet tool and build cache folders
 .artifacts/
+artifacts/

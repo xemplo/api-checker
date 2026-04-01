@@ -1,52 +1,63 @@
 # Xemplo API Checker
 
-`Xemplo.ApiChecker` is a .NET command-line tool for comparing two OpenAPI specifications and reporting compatibility findings using configurable rule severities.
+`Xemplo.ApiChecker` is a .NET command-line tool for validating and comparing OpenAPI specifications and reporting compatibility findings using configurable rule severities.
 
-- OpenAPI 3.0 and 3.1 only
-- exactly two required inputs: `--old` and `--new`
-- local files and unauthenticated `http` or `https` URLs
-- JSON request/response body comparisons only
-- query-parameter comparisons only
-- endpoint additions/removals, operationId updates, and new response-code detection
-- conservative evaluation when the specification is ambiguous
+There is nothing more frustrating to the user of your API than to have breaking changes unexpectedly arise. This tool helps to try and combat as many of those as possible.
 
-## Usage
+Currently supports:
+- OpenAPI 3.0 and 3.1
+- Local and http(s) hosted API spec files
+- JSON request/response body comparisons
+- Query-parameter comparisons
+- Endpoint additions/removals, operationId updates, and new response-code detection
+
+## Install
+
+Currently, the easiest way to use it is as a dotnet CLI tool:
+
+```bash
+dotnet tool install --global Xemplo.ApiChecker
+api-checker --old <path-or-url> --new <path-or-url>
+```
+
+Or, more simply, using new `dnx` syntax:
+```bash
+dnx api-checker --old <path-or-url> --new <path-or-url>
+```
+
+## Detailed Usage
 
 ```text
 api-checker --old <path-or-url> --new <path-or-url> [--config <path>] [--output text|json] [--rule <rule-id>=<severity> ...]
 ```
 
-Examples:
+### Examples
 
-```powershell
-dotnet run --project .\src\Xemplo.ApiChecker.Cli -- --old .\tests\fixtures\request-body-old.json --new .\tests\fixtures\request-body-new.json
-```
+```bash
+# Compare local specs using default compatibility rules
+api-checker --old .\tests\fixtures\request-body-old.json --new .\tests\fixtures\request-body-new.json
 
-```powershell
-dotnet run --project .\src\Xemplo.ApiChecker.Cli -- --old https://example.com/openapi-old.yaml --new https://example.com/openapi-new.yaml --output json
-```
+# Compare online specs using default compatibility rules and JSON output
+api-checker --old https://example.com/openapi-old.yaml --new https://example.com/openapi-new.yaml --output json
 
-```powershell
-dotnet run --project .\src\Xemplo.ApiChecker.Cli -- --old .\old.json --new .\new.json --config .\ci-rules.json --rule endpoint:new=off --rule response:new:status-code=error
+# Compare sources using a custom set of comparison rules
+api-checker --old old.json --new new.json --config ci-rules.json --rule endpoint:new=off --rule response:new:status-code=error
 ```
 
 ## Rule Configuration
 
-Rule precedence is:
-
-1. built-in defaults
+Rule precedence (from lowest to highest) is:
+1. Built-in defaults
 2. `api-rules.json` in the current working directory
 3. explicit `--config <path>`
 4. repeated `--rule <rule-id>=<severity>` overrides
 
 Supported severities:
-
 - `error`
 - `warning`
 - `off`
 
 Supported rule identifiers:
-
 - `input:new:required`
 - `input:new:optional`
 - `input:updated:required`
@@ -95,41 +106,17 @@ Example `api-rules.json`:
 
 Text output is the default. JSON output is available with `--output json` and includes stable fields for:
 
-- rule id
-- severity
-- message
-- operation identity
-- schema path when applicable
+- Rule id
+- Severity
+- Message
+- Operation identity
+- Schema path when applicable
 
 Exit codes:
-
 - `0`: no error-level findings
 - `1`: one or more error-level findings
 - `2`: invalid configuration, invalid input, fetch failures, parse failures, unsupported external references, or other runtime failures
 
-## Supported And Unsupported Scope
+## Contributing
 
-Supported in v1:
-
-- exact method plus case-insensitive path-template matching
-- JSON media types `application/json` and `application/*+json`
-- nested object and array traversal
-- conservative handling of `readOnly`, `writeOnly`, nullability, defaults, and schema composition
-
-Out of scope in v1:
-
-- Swagger/OpenAPI 2.0
-- authenticated spec downloads
-- external `$ref` targets
-- non-JSON body comparisons
-- path, header, or cookie parameter rules
-- rename heuristics
-- heuristic response rematching
-
-## Development
-
-Run the full test suite with:
-
-```powershell
-dotnet test .\Xemplo.ApiChecker.slnx
-```
+This is currently an early-stage, internal Xemplo tool. Issues may be submitted, but third-party pull requests are not currently being reviewed.
