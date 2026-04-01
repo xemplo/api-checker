@@ -4,15 +4,19 @@ namespace Xemplo.ApiChecker.Cli;
 
 public sealed record CliOptions
 {
-    public CliOptions(
-        string oldSource,
-        string newSource,
+    private CliOptions(
+        CliCommand command,
+        string? compareOldSource,
+        string? compareNewSource,
+        string? specificationSource,
         CliOutputMode outputMode = CliOutputMode.Text,
         string? configPath = null,
         IReadOnlyDictionary<ApiRuleId, ApiSeverity>? ruleOverrides = null)
     {
-        OldSource = oldSource;
-        NewSource = newSource;
+        Command = command;
+        OldSource = compareOldSource;
+        NewSource = compareNewSource;
+        SpecificationSource = specificationSource;
         OutputMode = outputMode;
         ConfigPath = configPath;
         RuleOverrides = ruleOverrides is null
@@ -20,9 +24,28 @@ public sealed record CliOptions
             : new Dictionary<ApiRuleId, ApiSeverity>(ruleOverrides);
     }
 
-    public string OldSource { get; }
+    public static CliOptions Compare(
+        string oldSource,
+        string newSource,
+        CliOutputMode outputMode = CliOutputMode.Text,
+        string? configPath = null,
+        IReadOnlyDictionary<ApiRuleId, ApiSeverity>? ruleOverrides = null)
+    {
+        return new CliOptions(CliCommand.Compare, oldSource, newSource, null, outputMode, configPath, ruleOverrides);
+    }
 
-    public string NewSource { get; }
+    public static CliOptions Validate(string specificationSource)
+    {
+        return new CliOptions(CliCommand.Validate, null, null, specificationSource);
+    }
+
+    public CliCommand Command { get; }
+
+    public string? OldSource { get; }
+
+    public string? NewSource { get; }
+
+    public string? SpecificationSource { get; }
 
     public CliOutputMode OutputMode { get; }
 

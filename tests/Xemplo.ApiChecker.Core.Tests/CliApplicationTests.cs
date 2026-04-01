@@ -9,75 +9,109 @@ namespace Xemplo.ApiChecker.Core.Tests;
 public class CliApplicationTests
 {
     [Fact]
-    public void Parse_WithValidArguments_ReturnsOptions()
+    public void Parse_WithCompareCommandAndValidArguments_ReturnsOptions()
     {
-        var result = CliArgumentParser.Parse(["--old", "old.json", "--new", "new.json"]);
+        var result = CliArgumentParser.Parse(["compare", "--old", "old.json", "--new", "new.json"]);
 
         Assert.True(result.IsSuccess);
         Assert.NotNull(result.Options);
+        Assert.Equal(CliCommand.Compare, result.Options!.Command);
         Assert.Equal("old.json", result.Options!.OldSource);
         Assert.Equal("new.json", result.Options.NewSource);
+        Assert.Null(result.Options.SpecificationSource);
         Assert.Equal(CliOutputMode.Text, result.Options.OutputMode);
     }
 
     [Fact]
-    public void Parse_WithUnknownArgument_ReturnsFailure()
+    public void Parse_WithValidateCommandAndValidArgument_ReturnsOptions()
     {
-        var result = CliArgumentParser.Parse(["--old", "old.json", "--new", "new.json", "--verbose"]);
+        var result = CliArgumentParser.Parse(["validate", "spec.json"]);
+
+        Assert.True(result.IsSuccess);
+        Assert.NotNull(result.Options);
+        Assert.Equal(CliCommand.Validate, result.Options!.Command);
+        Assert.Equal("spec.json", result.Options.SpecificationSource);
+        Assert.Null(result.Options.OldSource);
+        Assert.Null(result.Options.NewSource);
+    }
+
+    [Fact]
+    public void Parse_WithoutCommand_ReturnsFailure()
+    {
+        var result = CliArgumentParser.Parse([]);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal("Missing command. Use 'compare' or 'validate'.", result.ErrorMessage);
+    }
+
+    [Fact]
+    public void Parse_WithUnknownCommand_ReturnsFailure()
+    {
+        var result = CliArgumentParser.Parse(["diff", "spec.json"]);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal("Unknown command 'diff'. Use 'compare' or 'validate'.", result.ErrorMessage);
+    }
+
+    [Fact]
+    public void Parse_WithUnknownCompareArgument_ReturnsFailure()
+    {
+        var result = CliArgumentParser.Parse(["compare", "--old", "old.json", "--new", "new.json", "--verbose"]);
 
         Assert.False(result.IsSuccess);
         Assert.Equal("Unknown argument '--verbose'.", result.ErrorMessage);
     }
 
     [Fact]
-    public void Parse_WithMissingValueForOld_ReturnsFailure()
+    public void Parse_CompareWithMissingValueForOld_ReturnsFailure()
     {
-        var result = CliArgumentParser.Parse(["--old"]);
+        var result = CliArgumentParser.Parse(["compare", "--old"]);
 
         Assert.False(result.IsSuccess);
         Assert.Equal("Missing value for --old.", result.ErrorMessage);
     }
 
     [Fact]
-    public void Parse_WithOptionTokenInsteadOfOldValue_ReturnsFailure()
+    public void Parse_CompareWithOptionTokenInsteadOfOldValue_ReturnsFailure()
     {
-        var result = CliArgumentParser.Parse(["--old", "--new", "new.json"]);
+        var result = CliArgumentParser.Parse(["compare", "--old", "--new", "new.json"]);
 
         Assert.False(result.IsSuccess);
         Assert.Equal("Missing value for --old.", result.ErrorMessage);
     }
 
     [Fact]
-    public void Parse_WithMissingValueForNew_ReturnsFailure()
+    public void Parse_CompareWithMissingValueForNew_ReturnsFailure()
     {
-        var result = CliArgumentParser.Parse(["--old", "old.json", "--new"]);
+        var result = CliArgumentParser.Parse(["compare", "--old", "old.json", "--new"]);
 
         Assert.False(result.IsSuccess);
         Assert.Equal("Missing value for --new.", result.ErrorMessage);
     }
 
     [Fact]
-    public void Parse_WithDuplicateOldArgument_ReturnsFailure()
+    public void Parse_CompareWithDuplicateOldArgument_ReturnsFailure()
     {
-        var result = CliArgumentParser.Parse(["--old", "old.json", "--old", "other.json", "--new", "new.json"]);
+        var result = CliArgumentParser.Parse(["compare", "--old", "old.json", "--old", "other.json", "--new", "new.json"]);
 
         Assert.False(result.IsSuccess);
         Assert.Equal("Duplicate argument '--old'.", result.ErrorMessage);
     }
 
     [Fact]
-    public void Parse_WithDuplicateNewArgument_ReturnsFailure()
+    public void Parse_CompareWithDuplicateNewArgument_ReturnsFailure()
     {
-        var result = CliArgumentParser.Parse(["--old", "old.json", "--new", "new.json", "--new", "other.json"]);
+        var result = CliArgumentParser.Parse(["compare", "--old", "old.json", "--new", "new.json", "--new", "other.json"]);
 
         Assert.False(result.IsSuccess);
         Assert.Equal("Duplicate argument '--new'.", result.ErrorMessage);
     }
 
     [Fact]
-    public void Parse_WithConfigAndRuleOverrides_ReturnsExpandedOptions()
+    public void Parse_CompareWithConfigAndRuleOverrides_ReturnsExpandedOptions()
     {
         var result = CliArgumentParser.Parse([
+            "compare",
             "--old", "old.json",
             "--new", "new.json",
             "--output", "json",
@@ -93,84 +127,111 @@ public class CliApplicationTests
     }
 
     [Fact]
-    public void Parse_WithMissingValueForOutput_ReturnsFailure()
+    public void Parse_CompareWithMissingValueForOutput_ReturnsFailure()
     {
-        var result = CliArgumentParser.Parse(["--old", "old.json", "--new", "new.json", "--output"]);
+        var result = CliArgumentParser.Parse(["compare", "--old", "old.json", "--new", "new.json", "--output"]);
 
         Assert.False(result.IsSuccess);
         Assert.Equal("Missing value for --output.", result.ErrorMessage);
     }
 
     [Fact]
-    public void Parse_WithDuplicateOutputArgument_ReturnsFailure()
+    public void Parse_CompareWithDuplicateOutputArgument_ReturnsFailure()
     {
-        var result = CliArgumentParser.Parse(["--old", "old.json", "--new", "new.json", "--output", "json", "--output", "text"]);
+        var result = CliArgumentParser.Parse(["compare", "--old", "old.json", "--new", "new.json", "--output", "json", "--output", "text"]);
 
         Assert.False(result.IsSuccess);
         Assert.Equal("Duplicate argument '--output'.", result.ErrorMessage);
     }
 
     [Fact]
-    public void Parse_WithUnsupportedOutputMode_ReturnsFailure()
+    public void Parse_CompareWithUnsupportedOutputMode_ReturnsFailure()
     {
-        var result = CliArgumentParser.Parse(["--old", "old.json", "--new", "new.json", "--output", "xml"]);
+        var result = CliArgumentParser.Parse(["compare", "--old", "old.json", "--new", "new.json", "--output", "xml"]);
 
         Assert.False(result.IsSuccess);
         Assert.Equal("Output mode 'xml' is not supported. Use 'text' or 'json'.", result.ErrorMessage);
     }
 
     [Fact]
-    public void Parse_WithMissingValueForConfig_ReturnsFailure()
+    public void Parse_CompareWithMissingValueForConfig_ReturnsFailure()
     {
-        var result = CliArgumentParser.Parse(["--old", "old.json", "--new", "new.json", "--config"]);
+        var result = CliArgumentParser.Parse(["compare", "--old", "old.json", "--new", "new.json", "--config"]);
 
         Assert.False(result.IsSuccess);
         Assert.Equal("Missing value for --config.", result.ErrorMessage);
     }
 
     [Fact]
-    public void Parse_WithMissingValueForRule_ReturnsFailure()
+    public void Parse_CompareWithMissingValueForRule_ReturnsFailure()
     {
-        var result = CliArgumentParser.Parse(["--old", "old.json", "--new", "new.json", "--rule"]);
+        var result = CliArgumentParser.Parse(["compare", "--old", "old.json", "--new", "new.json", "--rule"]);
 
         Assert.False(result.IsSuccess);
         Assert.Equal("Missing value for --rule.", result.ErrorMessage);
     }
 
     [Fact]
-    public void Parse_WithOptionTokenInsteadOfRuleValue_ReturnsFailure()
+    public void Parse_CompareWithOptionTokenInsteadOfRuleValue_ReturnsFailure()
     {
-        var result = CliArgumentParser.Parse(["--old", "old.json", "--new", "new.json", "--rule", "--output", "json"]);
+        var result = CliArgumentParser.Parse(["compare", "--old", "old.json", "--new", "new.json", "--rule", "--output", "json"]);
 
         Assert.False(result.IsSuccess);
         Assert.Equal("Missing value for --rule.", result.ErrorMessage);
     }
 
     [Fact]
-    public void Parse_WithInvalidRuleFormat_ReturnsFailure()
+    public void Parse_CompareWithInvalidRuleFormat_ReturnsFailure()
     {
-        var result = CliArgumentParser.Parse(["--old", "old.json", "--new", "new.json", "--rule", "input:new:required"]);
+        var result = CliArgumentParser.Parse(["compare", "--old", "old.json", "--new", "new.json", "--rule", "input:new:required"]);
 
         Assert.False(result.IsSuccess);
         Assert.Equal("Invalid rule override 'input:new:required'. Expected <rule-id>=<severity>.", result.ErrorMessage);
     }
 
     [Fact]
-    public void Parse_WithUnsupportedRule_ReturnsFailure()
+    public void Parse_CompareWithUnsupportedRule_ReturnsFailure()
     {
-        var result = CliArgumentParser.Parse(["--old", "old.json", "--new", "new.json", "--rule", "UnknownRule=warning"]);
+        var result = CliArgumentParser.Parse(["compare", "--old", "old.json", "--new", "new.json", "--rule", "UnknownRule=warning"]);
 
         Assert.False(result.IsSuccess);
         Assert.Equal("Rule 'UnknownRule' is not supported.", result.ErrorMessage);
     }
 
     [Fact]
-    public void Parse_WithUnsupportedSeverity_ReturnsFailure()
+    public void Parse_CompareWithUnsupportedSeverity_ReturnsFailure()
     {
-        var result = CliArgumentParser.Parse(["--old", "old.json", "--new", "new.json", "--rule", "input:new:required=critical"]);
+        var result = CliArgumentParser.Parse(["compare", "--old", "old.json", "--new", "new.json", "--rule", "input:new:required=critical"]);
 
         Assert.False(result.IsSuccess);
         Assert.Equal("Severity 'critical' is not supported.", result.ErrorMessage);
+    }
+
+    [Fact]
+    public void Parse_ValidateWithoutSpec_ReturnsFailure()
+    {
+        var result = CliArgumentParser.Parse(["validate"]);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal("The validate command requires <spec>.", result.ErrorMessage);
+    }
+
+    [Fact]
+    public void Parse_ValidateWithOptionTokenInsteadOfSpec_ReturnsFailure()
+    {
+        var result = CliArgumentParser.Parse(["validate", "--output"]);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal("The validate command requires <spec>.", result.ErrorMessage);
+    }
+
+    [Fact]
+    public void Parse_ValidateWithUnexpectedArgument_ReturnsFailure()
+    {
+        var result = CliArgumentParser.Parse(["validate", "spec.json", "extra.json"]);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal("Unknown argument 'extra.json'.", result.ErrorMessage);
     }
 
     [Fact]
@@ -191,7 +252,7 @@ public class CliApplicationTests
             .Returns(ApiComparisonResult.Empty);
 
         var exitCode = await CliApplication.RunAsync(
-            ["--old", "old.json", "--new", "new.json"],
+            ["compare", "--old", "old.json", "--new", "new.json"],
             output,
             error,
             loader,
@@ -210,6 +271,62 @@ public class CliApplicationTests
     }
 
     [Fact]
+    public async Task RunAsync_WithValidateCommandAndValidInput_PrintsValidationSuccess()
+    {
+        var loader = Substitute.For<IApiSpecificationLoader>();
+        var engine = Substitute.For<IApiComparisonEngine>();
+        var document = new ApiSpecificationDocument(new OpenApiDocument(), "spec.json");
+        var output = new StringWriter();
+        var error = new StringWriter();
+
+        loader.LoadAsync("spec.json", Arg.Any<CancellationToken>())
+            .Returns(ApiSpecificationLoadResult.Success(document));
+
+        var exitCode = await CliApplication.RunAsync(
+            ["validate", "spec.json"],
+            output,
+            error,
+            loader,
+            engine);
+
+        Assert.Equal(0, exitCode);
+        Assert.Contains("Validated spec.json", output.ToString());
+        Assert.Contains("Specification is valid.", output.ToString());
+        Assert.Equal(string.Empty, error.ToString());
+        await loader.Received(1).LoadAsync("spec.json", Arg.Any<CancellationToken>());
+        engine.DidNotReceive().Compare(Arg.Any<ApiComparisonInput>(), Arg.Any<ApiRuleProfile>());
+    }
+
+    [Fact]
+    public async Task RunAsync_WithValidateCommandAndLoadFailure_ReturnsRuntimeFailure()
+    {
+        var loader = Substitute.For<IApiSpecificationLoader>();
+        var engine = Substitute.For<IApiComparisonEngine>();
+        var output = new StringWriter();
+        var error = new StringWriter();
+
+        loader.LoadAsync("spec.json", Arg.Any<CancellationToken>())
+            .Returns(ApiSpecificationLoadResult.Fail(
+                new ApiSpecificationLoadFailure(
+                    ApiSpecificationLoadFailureKind.ParseFailed,
+                    "Bad input.",
+                    "spec.json")));
+
+        var exitCode = await CliApplication.RunAsync(
+            ["validate", "spec.json"],
+            output,
+            error,
+            loader,
+            engine);
+
+        Assert.Equal(2, exitCode);
+        Assert.Contains("Failed to load specification 'spec.json':", error.ToString());
+        Assert.Contains("- \u001b[31mERROR\u001b[0m Bad input.", error.ToString());
+        Assert.Equal(string.Empty, output.ToString());
+        engine.DidNotReceive().Compare(Arg.Any<ApiComparisonInput>(), Arg.Any<ApiRuleProfile>());
+    }
+
+    [Fact]
     public async Task RunAsync_WithoutInjectedDependencies_UsesDefaultPipeline()
     {
         var oldPath = Path.GetTempFileName();
@@ -222,7 +339,7 @@ public class CliApplicationTests
 
         try
         {
-            var exitCode = await CliApplication.RunAsync(["--old", oldPath, "--new", newPath], output, error);
+            var exitCode = await CliApplication.RunAsync(["compare", "--old", oldPath, "--new", newPath], output, error);
 
             Assert.Equal(0, exitCode);
             Assert.Contains("No findings.", output.ToString());
@@ -256,7 +373,7 @@ public class CliApplicationTests
 
         try
         {
-            var exitCode = await CliApplication.RunAsync(["--old", oldPath, "--new", newPath], output, error, workingDirectory: directory);
+            var exitCode = await CliApplication.RunAsync(["compare", "--old", oldPath, "--new", newPath], output, error, workingDirectory: directory);
 
             Assert.Equal(0, exitCode);
             Assert.Contains("No findings.", output.ToString());
@@ -298,7 +415,7 @@ public class CliApplicationTests
         try
         {
             var exitCode = await CliApplication.RunAsync(
-                ["--old", oldPath, "--new", newPath, "--config", "pipeline-rules.json"],
+                ["compare", "--old", oldPath, "--new", newPath, "--config", "pipeline-rules.json"],
                 output,
                 error,
                 workingDirectory: directory);
@@ -338,7 +455,7 @@ public class CliApplicationTests
         try
         {
             var exitCode = await CliApplication.RunAsync(
-                ["--old", oldPath, "--new", newPath, "--config", "pipeline-rules.json", "--rule", "input:new:required=error"],
+                ["compare", "--old", oldPath, "--new", newPath, "--config", "pipeline-rules.json", "--rule", "input:new:required=error"],
                 output,
                 error,
                 workingDirectory: directory);
@@ -369,7 +486,7 @@ public class CliApplicationTests
         try
         {
             var exitCode = await CliApplication.RunAsync(
-                ["--old", oldPath, "--new", newPath, "--config", "bad-rules.json"],
+                ["compare", "--old", oldPath, "--new", newPath, "--config", "bad-rules.json"],
                 output,
                 error,
                 workingDirectory: directory);
@@ -390,7 +507,7 @@ public class CliApplicationTests
         var output = new StringWriter();
         var error = new StringWriter();
 
-        var exitCode = await CliApplication.RunAsync(["--old", "old.json"], output, error);
+        var exitCode = await CliApplication.RunAsync(["compare", "--old", "old.json"], output, error);
 
         Assert.Equal(2, exitCode);
         Assert.Contains("Both --old and --new are required.", error.ToString());
@@ -414,7 +531,7 @@ public class CliApplicationTests
                     "old.json")));
 
         var exitCode = await CliApplication.RunAsync(
-            ["--old", "old.json", "--new", "new.json"],
+            ["compare", "--old", "old.json", "--new", "new.json"],
             output,
             error,
             loader,
@@ -446,7 +563,7 @@ public class CliApplicationTests
                     "new.json")));
 
         var exitCode = await CliApplication.RunAsync(
-            ["--old", "old.json", "--new", "new.json"],
+            ["compare", "--old", "old.json", "--new", "new.json"],
             output,
             error,
             loader,
@@ -472,7 +589,7 @@ public class CliApplicationTests
 
         try
         {
-            var exitCode = await CliApplication.RunAsync(["--old", oldPath, "--new", newPath], output, error);
+            var exitCode = await CliApplication.RunAsync(["compare", "--old", oldPath, "--new", newPath], output, error);
 
             Assert.Equal(2, exitCode);
             Assert.Equal(string.Empty, output.ToString());
@@ -516,7 +633,7 @@ public class CliApplicationTests
                     "listPets")));
 
         var exitCode = await CliApplication.RunAsync(
-            ["--old", "old.json", "--new", "new.json"],
+            ["compare", "--old", "old.json", "--new", "new.json"],
             output,
             error,
             loader,
@@ -551,7 +668,7 @@ public class CliApplicationTests
             .Returns(ApiSpecificationLoadResult.Success(new ApiSpecificationDocument(new OpenApiDocument(), "new.json")));
 
         var exitCode = await CliApplication.RunAsync(
-            ["--old", "old.json", "--new", "new.json"],
+            ["compare", "--old", "old.json", "--new", "new.json"],
             output,
             error,
             loader,
@@ -576,7 +693,7 @@ public class CliApplicationTests
 
         try
         {
-            var exitCode = await CliApplication.RunAsync(["--old", oldPath, "--new", newPath], output, error);
+            var exitCode = await CliApplication.RunAsync(["compare", "--old", oldPath, "--new", newPath], output, error);
 
             Assert.Equal(2, exitCode);
             Assert.Equal(string.Empty, output.ToString());
@@ -608,7 +725,7 @@ public class CliApplicationTests
             .Do(_ => throw new InvalidOperationException("boom"));
 
         var exitCode = await CliApplication.RunAsync(
-            ["--old", "old.json", "--new", "new.json"],
+            ["compare", "--old", "old.json", "--new", "new.json"],
             output,
             error,
             loader,
@@ -638,7 +755,7 @@ public class CliApplicationTests
                 [new ApiFinding(ApiRuleId.EndpointRemoved, ApiSeverity.Error, "Endpoint removed", new ApiOperationIdentity("GET", "/pets"))]));
 
         var exitCode = await CliApplication.RunAsync(
-            ["--old", "old.json", "--new", "new.json"],
+            ["compare", "--old", "old.json", "--new", "new.json"],
             output,
             error,
             loader,
@@ -669,7 +786,7 @@ public class CliApplicationTests
                 [new ApiFinding(ApiRuleId.NewEndpoint, ApiSeverity.Warning, "Endpoint added", new ApiOperationIdentity("POST", "/pets"))]));
 
         var exitCode = await CliApplication.RunAsync(
-            ["--old", "old.json", "--new", "new.json"],
+            ["compare", "--old", "old.json", "--new", "new.json"],
             output,
             error,
             loader,
@@ -713,7 +830,7 @@ public class CliApplicationTests
             ]));
 
         var exitCode = await CliApplication.RunAsync(
-            ["--old", "old.json", "--new", "new.json", "--output", "json"],
+            ["compare", "--old", "old.json", "--new", "new.json", "--output", "json"],
             output,
             error,
             loader,
@@ -756,7 +873,7 @@ public class CliApplicationTests
         var output = new StringWriter();
         var error = new StringWriter();
 
-        var exitCode = await CliApplication.RunAsync(["--old", oldPath, "--new", newPath, "--output", "json"], output, error);
+        var exitCode = await CliApplication.RunAsync(["compare", "--old", oldPath, "--new", newPath, "--output", "json"], output, error);
 
         Assert.Equal(1, exitCode);
         Assert.Equal(string.Empty, error.ToString());
@@ -797,7 +914,7 @@ public class CliApplicationTests
                 [new ApiFinding(ApiRuleId.NewResponseCode, ApiSeverity.Warning, "Response code added")]));
 
         var exitCode = await CliApplication.RunAsync(
-            ["--old", "old.json", "--new", "new.json"],
+            ["compare", "--old", "old.json", "--new", "new.json"],
             output,
             error,
             loader,
@@ -818,7 +935,7 @@ public class CliApplicationTests
         var output = new StringWriter();
         var error = new StringWriter();
 
-        var exitCode = await CliApplication.RunAsync(["--old", oldPath, "--new", newPath], output, error);
+        var exitCode = await CliApplication.RunAsync(["compare", "--old", oldPath, "--new", newPath], output, error);
 
         Assert.Equal(1, exitCode);
         Assert.Contains("input:new:required", output.ToString());
@@ -838,7 +955,7 @@ public class CliApplicationTests
         var output = new StringWriter();
         var error = new StringWriter();
 
-        var exitCode = await CliApplication.RunAsync(["--old", oldPath, "--new", newPath], output, error);
+        var exitCode = await CliApplication.RunAsync(["compare", "--old", oldPath, "--new", newPath], output, error);
 
         Assert.Equal(1, exitCode);
         Assert.Contains("query:new:required", output.ToString());
@@ -859,7 +976,7 @@ public class CliApplicationTests
         var output = new StringWriter();
         var error = new StringWriter();
 
-        var exitCode = await CliApplication.RunAsync(["--old", oldPath, "--new", newPath], output, error);
+        var exitCode = await CliApplication.RunAsync(["compare", "--old", oldPath, "--new", newPath], output, error);
 
         Assert.Equal(1, exitCode);
         Assert.Contains("output:removed", output.ToString());
@@ -883,7 +1000,7 @@ public class CliApplicationTests
         var output = new StringWriter();
         var error = new StringWriter();
 
-        var exitCode = await CliApplication.RunAsync(["--old", oldPath, "--new", newPath], output, error);
+        var exitCode = await CliApplication.RunAsync(["compare", "--old", oldPath, "--new", newPath], output, error);
 
         Assert.Equal(1, exitCode);
         Assert.Contains("endpoint:removed", output.ToString());

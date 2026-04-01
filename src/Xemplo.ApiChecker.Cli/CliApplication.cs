@@ -32,24 +32,13 @@ public static class CliApplication
         try
         {
             loader ??= new ApiSpecificationLoader();
-            engine ??= new ApiComparisonEngine();
-            ruleProfile ??= await ResolveRuleProfileAsync(parseResult.Options!, workingDirectory, cancellationToken);
 
-            var oldResult = await loader.LoadAsync(parseResult.Options!.OldSource, cancellationToken);
-            var newResult = await loader.LoadAsync(parseResult.Options.NewSource, cancellationToken);
-
-            if (!oldResult.IsSuccess || !newResult.IsSuccess)
+            return parseResult.Options!.Command switch
             {
-                await WriteLoadFailuresAsync(error, "old", parseResult.Options.OldSource, oldResult);
-                await WriteLoadFailuresAsync(error, "new", parseResult.Options.NewSource, newResult);
-                return 2;
-            }
-
-            var comparisonInput = new ApiComparisonInput(oldResult.Specification!, newResult.Specification!);
-            var comparisonResult = engine.Compare(comparisonInput, ruleProfile);
-
-            await ReportWriter.WriteAsync(output, parseResult.Options, comparisonResult);
-            return comparisonResult.HasErrorFindings ? 1 : 0;
+                CliCommand.Compare => await RunCompareAsync(parseResult.Options, output, error, loader, engine, ruleProfile, workingDirectory, cancellationToken),
+                CliCommand.Validate => await RunValidateAsync(parseResult.Options, output, error, loader, cancellationToken),
+                _ => 2
+            };
         }
         catch (ApiRuleProfileConfigurationException exception)
         {
@@ -63,14 +52,69 @@ public static class CliApplication
         }
     }
 
-    private static async Task WriteLoadFailuresAsync(TextWriter error, string label, string source, ApiSpecificationLoadResult result)
+    private static async Task<int> RunCompareAsync(
+        CliOptions options,
+        TextWriter output,
+        TextWriter error,
+        IApiSpecificationLoader loader,
+        IApiComparisonEngine? engine,
+        ApiRuleProfile? ruleProfile,
+        string? workingDirectory,
+        CancellationToken cancellationToken)
+    {
+        engine ??= new ApiComparisonEngine();
+        ruleProfile ??= await ResolveRuleProfileAsync(options, workingDirectory, cancellationToken);
+
+        var oldResult = await loader.LoadAsync(options.OldSource!, cancellationToken);
+        var newResult = await loader.LoadAsync(options.NewSource!, cancellationToken);
+
+        if (!oldResult.IsSuccess || !newResult.IsSuccess)
+        {
+            await WriteLoadFailuresAsync(error, "old", options.OldSource!, oldResult);
+            await WriteLoadFailuresAsync(error, "new", options.NewSource!, newResult);
+            return 2;
+        }
+
+        var comparisonInput = new ApiComparisonInput(oldResult.Specification!, newResult.Specification!);
+        var comparisonResult = engine.Compare(comparisonInput, ruleProfile);
+
+        await ReportWriter.WriteAsync(output, options, comparisonResult);
+        return comparisonResult.HasErrorFindings ? 1 : 0;
+    }
+
+    private static async Task<int> RunValidateAsync(
+        CliOptions options,
+        TextWriter output,
+        TextWriter error,
+        IApiSpecificationLoader loader,
+        CancellationToken cancellationToken)
+    {
+        var source = options.SpecificationSource!;
+        var result = await loader.LoadAsync(source, cancellationToken);
+
+        if (!result.IsSuccess)
+        {
+            await WriteLoadFailuresAsync(error, null, source, result);
+            return 2;
+        }
+
+        await output.WriteLineAsync($"Validated {source}");
+        await output.WriteLineAsync("Specification is valid.");
+        return 0;
+    }
+
+    private static async Task WriteLoadFailuresAsync(TextWriter error, string? label, string source, ApiSpecificationLoadResult result)
     {
         if (result.IsSuccess)
         {
             return;
         }
 
-        await error.WriteLineAsync($"Failed to load {label} specification '{source}':");
+        var descriptor = string.IsNullOrWhiteSpace(label)
+            ? "specification"
+            : $"{label} specification";
+
+        await error.WriteLineAsync($"Failed to load {descriptor} '{source}':");
 
         foreach (var failure in result.Failures)
         {
