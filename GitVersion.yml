@@ -3,11 +3,11 @@ commit-message-incrementing: MergeMessageOnly
 
 branches:
   main:
-    mode: ContinuousDeployment
+    mode: ContinuousDelivery
     label: alpha
     increment: Patch
   release:
     regex: ^release/
-    mode: ContinuousDeployment
+    mode: ContinuousDelivery
     label: rc
     increment: None
