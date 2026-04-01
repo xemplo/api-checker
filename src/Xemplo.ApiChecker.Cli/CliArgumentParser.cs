@@ -8,6 +8,21 @@ public static class CliArgumentParser
     {
         ArgumentNullException.ThrowIfNull(args);
 
+        if (args.Length == 0)
+        {
+            return CliParseResult.Fail("Missing command. Use 'compare' or 'validate'.");
+        }
+
+        return args[0] switch
+        {
+            "compare" => ParseCompare(args),
+            "validate" => ParseValidate(args),
+            _ => CliParseResult.Fail($"Unknown command '{args[0]}'. Use 'compare' or 'validate'.")
+        };
+    }
+
+    private static CliParseResult ParseCompare(string[] args)
+    {
         string? oldSource = null;
         string? newSource = null;
         var outputMode = CliOutputMode.Text;
@@ -15,7 +30,7 @@ public static class CliArgumentParser
         string? configPath = null;
         var ruleOverrides = new Dictionary<ApiRuleId, ApiSeverity>();
 
-        for (var index = 0; index < args.Length; index++)
+        for (var index = 1; index < args.Length; index++)
         {
             var arg = args[index];
 
@@ -104,7 +119,22 @@ public static class CliArgumentParser
             return CliParseResult.Fail("Both --old and --new are required.");
         }
 
-        return CliParseResult.Success(new CliOptions(oldSource, newSource, outputMode, configPath, ruleOverrides));
+        return CliParseResult.Success(new CompareCliOptions(oldSource, newSource, outputMode, configPath, ruleOverrides));
+    }
+
+    private static CliParseResult ParseValidate(string[] args)
+    {
+        if (args.Length == 1 || string.IsNullOrWhiteSpace(args[1]) || IsOptionToken(args[1]))
+        {
+            return CliParseResult.Fail("The validate command requires <path-or-url>.");
+        }
+
+        if (args.Length > 2)
+        {
+            return CliParseResult.Fail($"Unknown argument '{args[2]}'.");
+        }
+
+        return CliParseResult.Success(new ValidateCliOptions(args[1]));
     }
 
     private static bool TryReadValue(string[] args, ref int index, out string? value)

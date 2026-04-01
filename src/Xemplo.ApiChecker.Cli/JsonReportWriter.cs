@@ -13,7 +13,7 @@ public static class JsonReportWriter
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
     };
 
-    public static Task WriteAsync(TextWriter output, CliOptions options, ApiComparisonResult result)
+    public static Task WriteAsync(TextWriter output, CompareCliOptions options, ApiComparisonResult result)
     {
         ArgumentNullException.ThrowIfNull(output);
         ArgumentNullException.ThrowIfNull(options);

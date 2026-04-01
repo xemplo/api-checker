@@ -2,9 +2,11 @@ using Xemplo.ApiChecker.Core;
 
 namespace Xemplo.ApiChecker.Cli;
 
-public sealed record CliOptions
+public abstract record CliOptions;
+
+public sealed record CompareCliOptions : CliOptions
 {
-    public CliOptions(
+    public CompareCliOptions(
         string oldSource,
         string newSource,
         CliOutputMode outputMode = CliOutputMode.Text,
@@ -30,3 +32,5 @@ public sealed record CliOptions
 
     public IReadOnlyDictionary<ApiRuleId, ApiSeverity> RuleOverrides { get; }
 }
+
+public sealed record ValidateCliOptions(string SpecificationSource) : CliOptions;

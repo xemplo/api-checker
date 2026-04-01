@@ -4,7 +4,7 @@ namespace Xemplo.ApiChecker.Cli;
 
 public static class TextReportWriter
 {
-    public static async Task WriteAsync(TextWriter output, CliOptions options, ApiComparisonResult result)
+    public static async Task WriteAsync(TextWriter output, CompareCliOptions options, ApiComparisonResult result)
     {
         ArgumentNullException.ThrowIfNull(output);
         ArgumentNullException.ThrowIfNull(options);

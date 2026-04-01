@@ -17,31 +17,35 @@ Currently, the easiest way to use it is as a dotnet CLI tool:
 
 ```bash
 dotnet tool install --global Xemplo.ApiChecker
-api-checker --old <path-or-url> --new <path-or-url>
+api-checker compare --old <path-or-url> --new <path-or-url>
 ```
 
-Or, more simply, using new `dnx` syntax:
+Or, more simply, using `dnx` on the published `Xemplo.ApiChecker` package ID:
 ```bash
-dnx api-checker --old <path-or-url> --new <path-or-url>
+dnx Xemplo.ApiChecker compare --old <path-or-url> --new <path-or-url>
 ```
 
 ## Detailed Usage
 
 ```text
-api-checker --old <path-or-url> --new <path-or-url> [--config <path>] [--output text|json] [--rule <rule-id>=<severity> ...]
+api-checker compare --old <path-or-url> --new <path-or-url> [--config <path>] [--output text|json] [--rule <rule-id>=<severity> ...]
+api-checker validate <path-or-url>
 ```
 
 ### Examples
 
 ```bash
 # Compare local specs using default compatibility rules
-api-checker --old ./tests/fixtures/request-body-old.json --new ./tests/fixtures/request-body-new.json
+api-checker compare --old ./tests/fixtures/request-body-old.json --new ./tests/fixtures/request-body-new.json
 
 # Compare online specs using default compatibility rules and JSON output
-api-checker --old https://example.com/openapi-old.yaml --new https://example.com/openapi-new.yaml --output json
+api-checker compare --old https://example.com/openapi-old.yaml --new https://example.com/openapi-new.yaml --output json
 
 # Compare sources using a custom set of comparison rules
-api-checker --old old.json --new new.json --config ci-rules.json --rule endpoint:new=off --rule response:new:status-code=error
+api-checker compare --old old.json --new new.json --config ci-rules.json --rule endpoint:new=off --rule response:new:status-code=error
+
+# Validate a single spec file or URL without running compatibility checks
+api-checker validate https://example.com/openapi.yaml
 ```
 
 ## Rule Configuration
@@ -104,7 +108,7 @@ Example `api-rules.json`:
 
 ## Output And Exit Codes
 
-Text output is the default. JSON output is available with `--output json` and includes stable fields for:
+`compare` uses text output by default. JSON output is available with `--output json` and includes stable fields for:
 
 - Rule id
 - Severity
@@ -113,8 +117,8 @@ Text output is the default. JSON output is available with `--output json` and in
 - Schema path when applicable
 
 Exit codes:
-- `0`: no error-level findings
-- `1`: one or more error-level findings
+- `0`: compare completed without error-level findings, or validate completed successfully
+- `1`: compare found one or more error-level findings
 - `2`: invalid configuration, invalid input, fetch failures, parse failures, unsupported external references, or other runtime failures
 
 ## Contributing
