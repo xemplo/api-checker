@@ -498,6 +498,60 @@ public class ApiSpecificationLoaderTests
     }
 
     [Fact]
+    public async Task LoadAsync_EquivalentTemplatedPathsWithConflictingNonMethodFields_ReturnsParseFailure()
+    {
+        var path = Path.GetTempFileName();
+        await File.WriteAllTextAsync(path, EquivalentTemplatedPathsConflictingMetadataJson);
+
+        try
+        {
+            var loader = new ApiSpecificationLoader();
+
+            var result = await loader.LoadAsync(path);
+
+            Assert.False(result.IsSuccess);
+            var failure = Assert.Single(result.Failures);
+            Assert.Equal(ApiSpecificationLoadFailureKind.ParseFailed, failure.Kind);
+            Assert.Contains("conflicting values for the non-method field 'summary'", failure.Message);
+            Assert.Equal("/api/v1/instances/{}", failure.HighlightedSubject);
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    [Fact]
+    public async Task LoadAsync_EquivalentTemplatedPaths_DeduplicatesPromotedReferencedPathParameters()
+    {
+        var path = Path.GetTempFileName();
+        await File.WriteAllTextAsync(path, EquivalentTemplatedPathsWithReferencedPathParametersJson);
+
+        try
+        {
+            var loader = new ApiSpecificationLoader();
+
+            var result = await loader.LoadAsync(path);
+
+            Assert.True(result.IsSuccess, string.Join(Environment.NewLine, result.Failures.Select(static failure => failure.Message)));
+            Assert.NotNull(result.Specification);
+            var specification = result.Specification!;
+            var pathItem = Assert.Single(specification.Document.Paths);
+            Assert.NotNull(pathItem.Value);
+            Assert.NotNull(pathItem.Value!.Operations);
+
+            var getOperation = pathItem.Value.Operations![System.Net.Http.HttpMethod.Get];
+            Assert.NotNull(getOperation);
+            var pathParameters = (getOperation!.Parameters ?? []).Where(static parameter => parameter.In == Microsoft.OpenApi.Models.ParameterLocation.Path).ToArray();
+            Assert.Single(pathParameters);
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    [Fact]
     public async Task LoadAsync_WithMultipleValidationIssues_ReturnsAllFailures()
     {
         var path = Path.GetTempFileName();
@@ -610,6 +664,25 @@ public class ApiSpecificationLoaderTests
         "\"/api/v1/instances/{id}\":{\"get\":{\"parameters\":[{\"name\":\"id\",\"in\":\"path\",\"required\":true,\"schema\":{\"type\":\"integer\"}}],\"responses\":{\"200\":{\"description\":\"ok\"}}}}," +
         "\"/api/v1/instances/{idOrCode}\":{\"get\":{\"parameters\":[{\"name\":\"idOrCode\",\"in\":\"path\",\"required\":true,\"schema\":{\"type\":\"string\"}}],\"responses\":{\"200\":{\"description\":\"ok\"}}}}" +
         "}" +
+        "}";
+
+    private const string EquivalentTemplatedPathsConflictingMetadataJson = "{" +
+        "\"openapi\":\"3.0.3\"," +
+        "\"info\":{\"title\":\"Instances\",\"version\":\"1.0.0\"}," +
+        "\"paths\":{" +
+        "\"/api/v1/instances/{id}\":{\"summary\":\"By integer id\",\"put\":{\"parameters\":[{\"name\":\"id\",\"in\":\"path\",\"required\":true,\"schema\":{\"type\":\"integer\"}}],\"responses\":{\"200\":{\"description\":\"ok\"}}}}," +
+        "\"/api/v1/instances/{idOrCode}\":{\"summary\":\"By code\",\"get\":{\"parameters\":[{\"name\":\"idOrCode\",\"in\":\"path\",\"required\":true,\"schema\":{\"type\":\"string\"}}],\"responses\":{\"200\":{\"description\":\"ok\"}}}}" +
+        "}" +
+        "}";
+
+    private const string EquivalentTemplatedPathsWithReferencedPathParametersJson = "{" +
+        "\"openapi\":\"3.0.3\"," +
+        "\"info\":{\"title\":\"Instances\",\"version\":\"1.0.0\"}," +
+        "\"paths\":{" +
+        "\"/api/v1/instances/{alphaId}\":{\"parameters\":[{\"$ref\":\"#/components/parameters/AlphaId\"}],\"get\":{\"parameters\":[{\"name\":\"alphaId\",\"in\":\"path\",\"required\":true,\"schema\":{\"type\":\"string\"}}],\"responses\":{\"200\":{\"description\":\"ok\"}}}}," +
+        "\"/api/v1/instances/{betaId}\":{\"put\":{\"parameters\":[{\"name\":\"betaId\",\"in\":\"path\",\"required\":true,\"schema\":{\"type\":\"string\"}}],\"responses\":{\"200\":{\"description\":\"ok\"}}}}" +
+        "}," +
+        "\"components\":{\"parameters\":{\"AlphaId\":{\"name\":\"alphaId\",\"in\":\"path\",\"required\":true,\"schema\":{\"type\":\"integer\"}}}}" +
         "}";
 
     private const string MultiValidationIssueJson = "{" +

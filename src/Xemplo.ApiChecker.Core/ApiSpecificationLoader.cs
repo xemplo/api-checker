@@ -240,30 +240,23 @@ public sealed class ApiSpecificationLoader : IApiSpecificationLoader
 
         var failures = new List<ApiSpecificationLoadFailure>();
         var suppressedSignatures = new HashSet<string>(StringComparer.Ordinal);
-        var normalizedPaths = new JsonObject();
+        var normalizedPaths = new JsonObject(pathsObject.Select(path => new KeyValuePair<string, JsonNode?>(path.Key, path.Value?.DeepClone())));
 
         foreach (var group in groups)
         {
-            if (group.Paths.Count == 1)
+            if (TryMergeEquivalentTemplatedPathGroup(group, jsonNode, source, out var mergedPath))
             {
-                var path = group.Paths[0];
-                normalizedPaths[path.RawPath] = path.PathNode?.DeepClone();
-                continue;
-            }
+                foreach (var path in group.Paths)
+                {
+                    normalizedPaths.Remove(path.RawPath);
+                }
 
-            if (TryMergeEquivalentTemplatedPathGroup(group, source, out var mergedPath))
-            {
                 normalizedPaths[mergedPath.CanonicalPath] = mergedPath.PathItem;
                 continue;
             }
 
             failures.Add(mergedPath.Failure!);
             suppressedSignatures.Add(group.Signature);
-
-            foreach (var path in group.Paths)
-            {
-                normalizedPaths[path.RawPath] = path.PathNode?.DeepClone();
-            }
         }
 
         pathsObject.Parent!.AsObject()["paths"] = normalizedPaths;
@@ -272,6 +265,7 @@ public sealed class ApiSpecificationLoader : IApiSpecificationLoader
 
     private static bool TryMergeEquivalentTemplatedPathGroup(
         EquivalentTemplatedPathGroup group,
+        JsonNode rootNode,
         string source,
         out MergedEquivalentTemplatedPathResult mergedPath)
     {
@@ -292,7 +286,7 @@ public sealed class ApiSpecificationLoader : IApiSpecificationLoader
             return false;
         }
 
-        var mergedPathItem = ClonePathItemForMerge(canonicalPathItem, BuildPathParameterRenameMap(canonicalPath.PathParameterNames, canonicalPath.PathParameterNames));
+        var mergedPathItem = ClonePathItemForMerge(canonicalPathItem, BuildPathParameterRenameMap(canonicalPath.PathParameterNames, canonicalPath.PathParameterNames), rootNode);
 
         foreach (var path in group.Paths.Where(path => path != canonicalPath))
         {
@@ -321,7 +315,7 @@ public sealed class ApiSpecificationLoader : IApiSpecificationLoader
                 return false;
             }
 
-            var normalizedPathItem = ClonePathItemForMerge(pathItem, renameMap);
+            var normalizedPathItem = ClonePathItemForMerge(pathItem, renameMap, rootNode);
 
             foreach (var property in normalizedPathItem)
             {
@@ -330,6 +324,17 @@ public sealed class ApiSpecificationLoader : IApiSpecificationLoader
                     if (!mergedPathItem.ContainsKey(property.Key))
                     {
                         mergedPathItem[property.Key] = property.Value?.DeepClone();
+                    }
+                    else if (!JsonNode.DeepEquals(mergedPathItem[property.Key], property.Value))
+                    {
+                        mergedPath = new MergedEquivalentTemplatedPathResult(
+                            canonicalPath.RawPath,
+                            new JsonObject(),
+                            CreateEquivalentTemplatedPathFailure(
+                                group,
+                                $"Equivalent templated paths define conflicting values for the non-method field '{property.Key}'.",
+                                source));
+                        return false;
                     }
 
                     continue;
@@ -355,11 +360,11 @@ public sealed class ApiSpecificationLoader : IApiSpecificationLoader
         return true;
     }
 
-    private static JsonObject ClonePathItemForMerge(JsonObject pathItem, IReadOnlyDictionary<string, string> renameMap)
+    private static JsonObject ClonePathItemForMerge(JsonObject pathItem, IReadOnlyDictionary<string, string> renameMap, JsonNode rootNode)
     {
         var clone = (JsonObject)pathItem.DeepClone();
         RenamePathParameters(clone, renameMap);
-        PromotePathItemParametersToOperations(clone);
+        PromotePathItemParametersToOperations(clone, rootNode);
         return clone;
     }
 
@@ -409,7 +414,7 @@ public sealed class ApiSpecificationLoader : IApiSpecificationLoader
         }
     }
 
-    private static void PromotePathItemParametersToOperations(JsonObject pathItem)
+    private static void PromotePathItemParametersToOperations(JsonObject pathItem, JsonNode rootNode)
     {
         if (pathItem["parameters"] is not JsonArray sharedParameters)
         {
@@ -426,7 +431,7 @@ public sealed class ApiSpecificationLoader : IApiSpecificationLoader
             var operationParameters = operation["parameters"] as JsonArray ?? new JsonArray();
             foreach (var parameter in sharedParameters)
             {
-                AppendParameterIfMissing(operationParameters, parameter);
+                AppendParameterIfMissing(operationParameters, parameter, rootNode);
             }
 
             operation["parameters"] = operationParameters;
@@ -435,10 +440,10 @@ public sealed class ApiSpecificationLoader : IApiSpecificationLoader
         pathItem.Remove("parameters");
     }
 
-    private static void AppendParameterIfMissing(JsonArray destination, JsonNode? parameter)
+    private static void AppendParameterIfMissing(JsonArray destination, JsonNode? parameter, JsonNode rootNode)
     {
-        var identity = GetParameterIdentity(parameter);
-        if (identity is not null && destination.Any(existing => string.Equals(GetParameterIdentity(existing), identity, StringComparison.Ordinal)))
+        var identity = GetParameterIdentity(parameter, rootNode);
+        if (identity is not null && destination.Any(existing => string.Equals(GetParameterIdentity(existing, rootNode), identity, StringComparison.Ordinal)))
         {
             return;
         }
@@ -446,7 +451,7 @@ public sealed class ApiSpecificationLoader : IApiSpecificationLoader
         destination.Add(parameter?.DeepClone());
     }
 
-    private static string? GetParameterIdentity(JsonNode? parameter)
+    private static string? GetParameterIdentity(JsonNode? parameter, JsonNode rootNode)
     {
         if (parameter is not JsonObject parameterObject)
         {
@@ -456,6 +461,12 @@ public sealed class ApiSpecificationLoader : IApiSpecificationLoader
         if (parameterObject.TryGetPropertyValue("$ref", out var refNode)
             && refNode?.GetValue<string>() is { } reference)
         {
+            if (TryResolveInternalReferenceNode(rootNode, reference, out var resolvedParameter)
+                && resolvedParameter is JsonObject resolvedParameterObject)
+            {
+                return GetParameterIdentity(resolvedParameterObject, rootNode);
+            }
+
             return "$ref:" + reference;
         }
 
@@ -548,24 +559,28 @@ public sealed class ApiSpecificationLoader : IApiSpecificationLoader
 
     private static bool TryGetEquivalentTemplatedPathSignature(string message, out string signature)
     {
-        const string prefix = "The path signature '";
-        const string suffix = "' MUST be unique.";
-
         signature = string.Empty;
 
-        if (!message.StartsWith(prefix, StringComparison.Ordinal)
-            || !message.EndsWith(suffix, StringComparison.Ordinal))
+        if (string.IsNullOrWhiteSpace(message)
+            || message.IndexOf("path signature", StringComparison.OrdinalIgnoreCase) < 0
+            || message.IndexOf("unique", StringComparison.OrdinalIgnoreCase) < 0)
         {
             return false;
         }
 
-        var signatureLength = message.Length - prefix.Length - suffix.Length;
-        if (signatureLength <= 0)
+        var firstQuote = message.IndexOf('\'');
+        if (firstQuote < 0)
         {
             return false;
         }
 
-        signature = message.Substring(prefix.Length, signatureLength);
+        var secondQuote = message.IndexOf('\'', firstQuote + 1);
+        if (secondQuote <= firstQuote + 1)
+        {
+            return false;
+        }
+
+        signature = message.Substring(firstQuote + 1, secondQuote - firstQuote - 1);
         return true;
     }
 
@@ -580,9 +595,47 @@ public sealed class ApiSpecificationLoader : IApiSpecificationLoader
                 GetPathItemMethods(path.Value as JsonObject),
                 GetPathParameterNames(path.Key)))
             .GroupBy(static path => path.Signature, StringComparer.Ordinal)
+            .Where(static group => group.Skip(1).Any())
             .Select(group => new EquivalentTemplatedPathGroup(group.Key, group.OrderBy(static path => path.Index).ToArray()))
             .OrderBy(static group => group.Paths[0].Index)
             .ToArray();
+    }
+
+    private static bool TryResolveInternalReferenceNode(JsonNode rootNode, string reference, out JsonNode? resolvedNode)
+    {
+        resolvedNode = null;
+
+        if (reference.Equals("#", StringComparison.Ordinal))
+        {
+            resolvedNode = rootNode;
+            return true;
+        }
+
+        if (!reference.StartsWith("#/", StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        JsonNode? currentNode = rootNode;
+        foreach (var rawSegment in reference[2..].Split('/', StringSplitOptions.None))
+        {
+            var segment = DecodeJsonPointerSegment(rawSegment);
+
+            currentNode = currentNode switch
+            {
+                JsonObject currentObject when currentObject.TryGetPropertyValue(segment, out var childNode) => childNode,
+                JsonArray currentArray when int.TryParse(segment, out var index) && index >= 0 && index < currentArray.Count => currentArray[index],
+                _ => null
+            };
+
+            if (currentNode is null)
+            {
+                return false;
+            }
+        }
+
+        resolvedNode = currentNode;
+        return true;
     }
 
     private static bool TryGetPathsObject(JsonNode jsonNode, out JsonObject pathsObject)
