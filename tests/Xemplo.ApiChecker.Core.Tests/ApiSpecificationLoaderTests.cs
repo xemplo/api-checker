@@ -498,6 +498,33 @@ public class ApiSpecificationLoaderTests
     }
 
     [Fact]
+    public async Task LoadAsync_EquivalentTemplatedPathsWithMatchingPathLevelSummary_ReturnsSpecification()
+    {
+        var path = Path.GetTempFileName();
+        await File.WriteAllTextAsync(path, EquivalentTemplatedPathsWithMatchingSummaryJson);
+
+        try
+        {
+            var loader = new ApiSpecificationLoader();
+
+            var result = await loader.LoadAsync(path);
+
+            Assert.True(result.IsSuccess, string.Join(Environment.NewLine, result.Failures.Select(static failure => failure.Message)));
+            Assert.NotNull(result.Specification);
+            var pathItem = Assert.Single(result.Specification!.Document.Paths);
+            Assert.NotNull(pathItem.Value);
+            Assert.Equal("Instance operations", pathItem.Value!.Summary);
+            Assert.NotNull(pathItem.Value.Operations);
+            Assert.True(pathItem.Value.Operations!.ContainsKey(System.Net.Http.HttpMethod.Get));
+            Assert.True(pathItem.Value.Operations!.ContainsKey(System.Net.Http.HttpMethod.Put));
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    [Fact]
     public async Task LoadAsync_EquivalentTemplatedPathsWithSharedPathLevelParameters_ReturnsParseFailure()
     {
         var path = Path.GetTempFileName();
@@ -514,6 +541,34 @@ public class ApiSpecificationLoaderTests
             Assert.Equal(ApiSpecificationLoadFailureKind.ParseFailed, failure.Kind);
             Assert.Contains("defines the path-level field 'parameters'", failure.Message);
             Assert.Equal("/api/v1/instances/{}", failure.HighlightedSubject);
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    [Fact]
+    public async Task LoadAsync_EquivalentTemplatedPathsWithReferencedQueryParameter_ReturnsSpecification()
+    {
+        var path = Path.GetTempFileName();
+        await File.WriteAllTextAsync(path, EquivalentTemplatedPathsWithReferencedQueryParameterJson);
+
+        try
+        {
+            var loader = new ApiSpecificationLoader();
+
+            var result = await loader.LoadAsync(path);
+
+            Assert.True(result.IsSuccess, string.Join(Environment.NewLine, result.Failures.Select(static failure => failure.Message)));
+            Assert.NotNull(result.Specification);
+            var pathItem = Assert.Single(result.Specification!.Document.Paths);
+            Assert.NotNull(pathItem.Value);
+            Assert.NotNull(pathItem.Value!.Operations);
+
+            var getOperation = pathItem.Value.Operations![System.Net.Http.HttpMethod.Get];
+            Assert.NotNull(getOperation);
+            Assert.Contains(getOperation!.Parameters ?? [], static parameter => parameter.In == Microsoft.OpenApi.Models.ParameterLocation.Query && parameter.Name == "includeDeleted");
         }
         finally
         {
@@ -636,6 +691,15 @@ public class ApiSpecificationLoaderTests
         "}" +
         "}";
 
+    private const string EquivalentTemplatedPathsWithMatchingSummaryJson = "{" +
+        "\"openapi\":\"3.0.3\"," +
+        "\"info\":{\"title\":\"Instances\",\"version\":\"1.0.0\"}," +
+        "\"paths\":{" +
+        "\"/api/v1/instances/{id}\":{\"summary\":\"Instance operations\",\"put\":{\"parameters\":[{\"name\":\"id\",\"in\":\"path\",\"required\":true,\"schema\":{\"type\":\"integer\"}}],\"responses\":{\"200\":{\"description\":\"ok\"}}}}," +
+        "\"/api/v1/instances/{idOrCode}\":{\"summary\":\"Instance operations\",\"get\":{\"parameters\":[{\"name\":\"idOrCode\",\"in\":\"path\",\"required\":true,\"schema\":{\"type\":\"string\"}}],\"responses\":{\"200\":{\"description\":\"ok\"}}}}" +
+        "}" +
+        "}";
+
     private const string EquivalentTemplatedPathsWithSharedPathLevelParametersJson = "{" +
         "\"openapi\":\"3.0.3\"," +
         "\"info\":{\"title\":\"Instances\",\"version\":\"1.0.0\"}," +
@@ -643,6 +707,16 @@ public class ApiSpecificationLoaderTests
         "\"/api/v1/instances/{id}\":{\"parameters\":[{\"name\":\"id\",\"in\":\"path\",\"required\":true,\"schema\":{\"type\":\"integer\"}}],\"put\":{\"responses\":{\"200\":{\"description\":\"ok\"}}}}," +
         "\"/api/v1/instances/{idOrCode}\":{\"get\":{\"parameters\":[{\"name\":\"idOrCode\",\"in\":\"path\",\"required\":true,\"schema\":{\"type\":\"string\"}}],\"responses\":{\"200\":{\"description\":\"ok\"}}}}" +
         "}" +
+        "}";
+
+    private const string EquivalentTemplatedPathsWithReferencedQueryParameterJson = "{" +
+        "\"openapi\":\"3.0.3\"," +
+        "\"info\":{\"title\":\"Instances\",\"version\":\"1.0.0\"}," +
+        "\"paths\":{" +
+        "\"/api/v1/instances/{id}\":{\"put\":{\"parameters\":[{\"name\":\"id\",\"in\":\"path\",\"required\":true,\"schema\":{\"type\":\"integer\"}}],\"responses\":{\"200\":{\"description\":\"ok\"}}}}," +
+        "\"/api/v1/instances/{idOrCode}\":{\"get\":{\"parameters\":[{\"name\":\"idOrCode\",\"in\":\"path\",\"required\":true,\"schema\":{\"type\":\"string\"}},{\"$ref\":\"#/components/parameters/IncludeDeleted\"}],\"responses\":{\"200\":{\"description\":\"ok\"}}}}" +
+        "}," +
+        "\"components\":{\"parameters\":{\"IncludeDeleted\":{\"name\":\"includeDeleted\",\"in\":\"query\",\"required\":false,\"schema\":{\"type\":\"boolean\"}}}}" +
         "}";
 
     private const string MultiValidationIssueJson = "{" +

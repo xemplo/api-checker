@@ -282,6 +282,7 @@ public sealed class ApiSpecificationLoader : IApiSpecificationLoader
                 canonicalPathItem,
                 BuildPathParameterRenameMap(canonicalPath.PathParameterNames, canonicalPath.PathParameterNames),
                 mergedPathItem,
+                jsonNode,
                 source);
 
             if (failure is not null)
@@ -307,6 +308,7 @@ public sealed class ApiSpecificationLoader : IApiSpecificationLoader
                     pathItem,
                     BuildPathParameterRenameMap(path.PathParameterNames, canonicalPath.PathParameterNames),
                     mergedPathItem,
+                    jsonNode,
                     source);
 
                 if (failure is not null)
@@ -331,17 +333,38 @@ public sealed class ApiSpecificationLoader : IApiSpecificationLoader
         JsonObject pathItem,
         IReadOnlyDictionary<string, string> renameMap,
         JsonObject mergedPathItem,
+        JsonNode rootNode,
         string source)
     {
         foreach (var property in pathItem)
         {
             if (!IsHttpMethod(property.Key))
             {
-                return CreateEquivalentTemplatedPathFailure(
-                    signature,
-                    paths,
-                    $"Equivalent templated paths could not be merged because '{rawPath}' defines the path-level field '{property.Key}'. Move that metadata onto each operation instead.",
-                    source);
+                if (property.Key == "parameters")
+                {
+                    return CreateEquivalentTemplatedPathFailure(
+                        signature,
+                        paths,
+                        $"Equivalent templated paths could not be merged because '{rawPath}' defines the path-level field 'parameters'. Move that metadata onto each operation instead.",
+                        source);
+                }
+
+                if (!mergedPathItem.TryGetPropertyValue(property.Key, out var existingValue))
+                {
+                    mergedPathItem[property.Key] = property.Value?.DeepClone();
+                    continue;
+                }
+
+                if (!JsonNode.DeepEquals(existingValue, property.Value))
+                {
+                    return CreateEquivalentTemplatedPathFailure(
+                        signature,
+                        paths,
+                        $"Equivalent templated paths define conflicting values for the path-level field '{property.Key}'.",
+                        source);
+                }
+
+                continue;
             }
 
             if (property.Value is not JsonObject operation)
@@ -362,7 +385,7 @@ public sealed class ApiSpecificationLoader : IApiSpecificationLoader
                     source);
             }
 
-            if (renameMap.Count > 0 && ContainsReferencedParameters(operation))
+            if (renameMap.Count > 0 && ContainsReferencedPathParametersRequiringRename(operation, renameMap, rootNode))
             {
                 return CreateEquivalentTemplatedPathFailure(
                     signature,
@@ -405,10 +428,68 @@ public sealed class ApiSpecificationLoader : IApiSpecificationLoader
         }
     }
 
-    private static bool ContainsReferencedParameters(JsonObject operation)
+    private static bool ContainsReferencedPathParametersRequiringRename(
+        JsonObject operation,
+        IReadOnlyDictionary<string, string> renameMap,
+        JsonNode rootNode)
     {
-        return operation["parameters"] is JsonArray parameters
-            && parameters.Any(parameter => parameter is JsonObject parameterObject && parameterObject.ContainsKey("$ref"));
+        if (operation["parameters"] is not JsonArray parameters)
+        {
+            return false;
+        }
+
+        foreach (var parameter in parameters)
+        {
+            if (parameter is not JsonObject parameterObject
+                || !parameterObject.TryGetPropertyValue("$ref", out var refNode)
+                || refNode?.GetValue<string>() is not { } reference
+                || !TryResolveInternalReference(rootNode, reference, out var resolvedParameter)
+                || resolvedParameter is not JsonObject resolvedParameterObject)
+            {
+                continue;
+            }
+
+            if (resolvedParameterObject.TryGetPropertyValue("in", out var inNode)
+                && string.Equals(inNode?.GetValue<string>(), "path", StringComparison.Ordinal)
+                && resolvedParameterObject.TryGetPropertyValue("name", out var nameNode)
+                && nameNode?.GetValue<string>() is { } name
+                && renameMap.ContainsKey(name))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool TryResolveInternalReference(JsonNode rootNode, string reference, out JsonNode? resolvedNode)
+    {
+        resolvedNode = null;
+
+        if (!reference.StartsWith("#/", StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        JsonNode? currentNode = rootNode;
+        foreach (var rawSegment in reference[2..].Split('/', StringSplitOptions.None))
+        {
+            var segment = DecodeJsonPointerSegment(rawSegment);
+            currentNode = currentNode switch
+            {
+                JsonObject currentObject when currentObject.TryGetPropertyValue(segment, out var childNode) => childNode,
+                JsonArray currentArray when int.TryParse(segment, out var index) && index >= 0 && index < currentArray.Count => currentArray[index],
+                _ => null
+            };
+
+            if (currentNode is null)
+            {
+                return false;
+            }
+        }
+
+        resolvedNode = currentNode;
+        return true;
     }
 
     private static IReadOnlyDictionary<string, string> BuildPathParameterRenameMap(
