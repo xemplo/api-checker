@@ -1,7 +1,5 @@
-using System.Reflection;
 using System.Text.Json.Nodes;
-using Microsoft.OpenApi.Any;
-using Microsoft.OpenApi.Models.Interfaces;
+using Microsoft.OpenApi;
 
 namespace Xemplo.ApiChecker.Core;
 
@@ -163,11 +161,6 @@ public sealed class ApiJsonSchemaAnalyzer : IApiJsonSchemaAnalyzer
             return ApiSchemaCondition.Ambiguous;
         }
 
-        if (TryGetNullableFlag(schema, out var nullableFromFlag))
-        {
-            return nullableFromFlag ? ApiSchemaCondition.True : ApiSchemaCondition.False;
-        }
-
         var typeText = schema.Type?.ToString();
         if (!string.IsNullOrWhiteSpace(typeText))
         {
@@ -202,7 +195,7 @@ public sealed class ApiJsonSchemaAnalyzer : IApiJsonSchemaAnalyzer
             return Array.Empty<string>();
         }
 
-        return schema.Enum.Cast<object>().Select(static value => SerializeAnyValue(value)).ToArray();
+        return schema.Enum.Select(static value => value is null ? "null" : SerializeJsonNode(value)).ToArray();
     }
 
     private static IReadOnlyList<string> GetAmbiguityReasons(IOpenApiSchema schema, ApiSchemaUsage inheritedUsage)
@@ -228,7 +221,7 @@ public sealed class ApiJsonSchemaAnalyzer : IApiJsonSchemaAnalyzer
             reasons.Add("Schema is both readOnly and writeOnly.");
         }
 
-        if (!TryGetNullableFlag(schema, out _) && string.IsNullOrWhiteSpace(schema.Type?.ToString()))
+        if (string.IsNullOrWhiteSpace(schema.Type?.ToString()))
         {
             reasons.Add("Schema nullability is not explicit.");
         }
@@ -339,36 +332,6 @@ public sealed class ApiJsonSchemaAnalyzer : IApiJsonSchemaAnalyzer
         var typeText = schema.Type?.ToString();
         return !string.IsNullOrWhiteSpace(typeText)
             && typeText.Contains(token, StringComparison.OrdinalIgnoreCase);
-    }
-
-    private static bool TryGetNullableFlag(IOpenApiSchema schema, out bool value)
-    {
-        value = false;
-
-        var nullableProperty = schema.GetType().GetProperty("Nullable", BindingFlags.Public | BindingFlags.Instance);
-        if (nullableProperty is null)
-        {
-            return false;
-        }
-
-        var rawValue = nullableProperty.GetValue(schema);
-        if (rawValue is bool booleanValue)
-        {
-            value = booleanValue;
-            return true;
-        }
-
-        return false;
-    }
-
-    private static string SerializeAnyValue(object value)
-    {
-        return value switch
-        {
-            JsonNode jsonNode => SerializeJsonNode(jsonNode),
-            OpenApiAny anyValue => anyValue.Node?.ToJsonString() ?? anyValue.ToString() ?? string.Empty,
-            _ => value.ToString() ?? string.Empty
-        };
     }
 
     private static string SerializeJsonNode(JsonNode jsonNode)

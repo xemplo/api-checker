@@ -55,7 +55,7 @@ internal sealed class QueryRuleEvaluator : IApiRuleEvaluator
 
     private void AddQueryParameters(
         IDictionary<string, QueryParameterAnalysis> destination,
-        IEnumerable<Microsoft.OpenApi.Models.Interfaces.IOpenApiParameter>? parameters)
+        IEnumerable<Microsoft.OpenApi.IOpenApiParameter>? parameters)
     {
         if (parameters is null)
         {
@@ -65,7 +65,7 @@ internal sealed class QueryRuleEvaluator : IApiRuleEvaluator
         foreach (var parameter in parameters)
         {
             if (parameter is null
-                || parameter.In != Microsoft.OpenApi.Models.ParameterLocation.Query
+                || parameter.In != Microsoft.OpenApi.ParameterLocation.Query
                 || string.IsNullOrWhiteSpace(parameter.Name))
             {
                 continue;
@@ -77,7 +77,7 @@ internal sealed class QueryRuleEvaluator : IApiRuleEvaluator
     }
 
     private QueryParameterAnalysis AnalyzeQueryParameter(
-        Microsoft.OpenApi.Models.Interfaces.IOpenApiParameter parameter,
+        Microsoft.OpenApi.IOpenApiParameter parameter,
         string parameterName)
     {
         var schemaPath = $"$query.{parameterName}";

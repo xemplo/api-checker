@@ -1,4 +1,4 @@
-using Microsoft.OpenApi.Models;
+using Microsoft.OpenApi;
 using NSubstitute;
 using System.Text.Json;
 using Xemplo.ApiChecker.Cli;

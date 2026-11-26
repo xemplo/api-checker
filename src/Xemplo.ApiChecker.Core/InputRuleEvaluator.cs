@@ -185,7 +185,7 @@ internal sealed class InputRuleEvaluator : IApiRuleEvaluator
         }
     }
 
-    private static Microsoft.OpenApi.Models.Interfaces.IOpenApiSchema? GetComparableRequestSchema(Microsoft.OpenApi.Models.OpenApiOperation operation)
+    private static Microsoft.OpenApi.IOpenApiSchema? GetComparableRequestSchema(Microsoft.OpenApi.OpenApiOperation operation)
     {
         if (operation.RequestBody?.Content is null)
         {

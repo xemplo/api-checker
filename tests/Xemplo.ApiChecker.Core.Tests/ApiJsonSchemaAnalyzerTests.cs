@@ -1,5 +1,5 @@
 using System.Text.Json.Nodes;
-using Microsoft.OpenApi.Models;
+using Microsoft.OpenApi;
 using Xemplo.ApiChecker.Core;
 
 namespace Xemplo.ApiChecker.Core.Tests;
@@ -209,7 +209,7 @@ public class ApiJsonSchemaAnalyzerTests
     {
         var schema = new OpenApiSchema
         {
-            Properties = new Dictionary<string, Microsoft.OpenApi.Models.Interfaces.IOpenApiSchema>(),
+            Properties = new Dictionary<string, Microsoft.OpenApi.IOpenApiSchema>(),
             Required = new HashSet<string>(StringComparer.Ordinal)
         };
 
@@ -250,53 +250,13 @@ public class ApiJsonSchemaAnalyzerTests
 
     private static OpenApiSchema ScalarSchema(bool readOnly = false, bool writeOnly = false, bool nullable = false, JsonNode? defaultValue = null)
     {
-        var schema = new OpenApiSchema
+        return new OpenApiSchema
         {
             ReadOnly = readOnly,
             WriteOnly = writeOnly,
-            Default = defaultValue
+            Default = defaultValue,
+            Type = nullable ? JsonSchemaType.String | JsonSchemaType.Null : null
         };
-
-        SetNullable(schema, nullable);
-        return schema;
     }
 
-    private static void SetNullable(OpenApiSchema schema, bool value)
-    {
-        var property = typeof(OpenApiSchema).GetProperty("Nullable");
-        if (property is not null)
-        {
-            if (property.PropertyType == typeof(bool))
-            {
-                property.SetValue(schema, value);
-                return;
-            }
-
-            if (property.PropertyType == typeof(bool?))
-            {
-                property.SetValue(schema, (bool?)value);
-                return;
-            }
-        }
-
-        if (!value)
-        {
-            return;
-        }
-
-        var typeProperty = typeof(OpenApiSchema).GetProperty("Type");
-        if (typeProperty?.PropertyType == typeof(string))
-        {
-            typeProperty.SetValue(schema, "string,null");
-            return;
-        }
-
-        if (typeProperty?.PropertyType.IsEnum == true)
-        {
-            var stringValue = Enum.Parse(typeProperty.PropertyType, "String", ignoreCase: true);
-            var nullValue = Enum.Parse(typeProperty.PropertyType, "Null", ignoreCase: true);
-            var combinedValue = Convert.ToUInt64(stringValue) | Convert.ToUInt64(nullValue);
-            typeProperty.SetValue(schema, Enum.ToObject(typeProperty.PropertyType, combinedValue));
-        }
-    }
 }
