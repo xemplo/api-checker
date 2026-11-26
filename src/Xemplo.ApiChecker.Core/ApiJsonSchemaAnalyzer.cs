@@ -54,11 +54,7 @@ public sealed class ApiJsonSchemaAnalyzer : IApiJsonSchemaAnalyzer
             enumValues,
             ambiguityReasons));
 
-        if (HasOpaqueComposition(schema))
-        {
-            return;
-        }
-
+        var childNodes = new List<ApiJsonSchemaNode>();
         var properties = GetProperties(schema);
         if (kind == ApiJsonSchemaNodeKind.Object && properties.Count > 0)
         {
@@ -76,7 +72,7 @@ public sealed class ApiJsonSchemaAnalyzer : IApiJsonSchemaAnalyzer
                     property.Key,
                     usage,
                     DetermineRequired(schema, property.Key, properties),
-                    nodes);
+                    childNodes);
             }
         }
 
@@ -90,8 +86,66 @@ public sealed class ApiJsonSchemaAnalyzer : IApiJsonSchemaAnalyzer
                 propertyName: null,
                 usage,
                 ApiSchemaCondition.NotApplicable,
-                nodes);
+                childNodes);
         }
+
+        var ownPaths = childNodes.Select(static node => node.SchemaPath).ToHashSet(StringComparer.Ordinal);
+        childNodes.AddRange(AnalyzeUnionBranches(schema, context, schemaPath, propertyName, usage, required)
+            .Where(node => !ownPaths.Contains(node.SchemaPath)));
+
+        foreach (var childNode in childNodes)
+        {
+            nodes.Add(childNode);
+        }
+    }
+
+    private static IEnumerable<ApiJsonSchemaNode> AnalyzeUnionBranches(
+        IOpenApiSchema schema,
+        ApiSchemaContext context,
+        string schemaPath,
+        string? propertyName,
+        ApiSchemaUsage usage,
+        ApiSchemaCondition required)
+    {
+        var branches = (schema.OneOf ?? []).Concat(schema.AnyOf ?? []).Where(static branch => branch is not null).ToArray();
+
+        return branches
+            .SelectMany(branch =>
+            {
+                var branchNodes = new List<ApiJsonSchemaNode>();
+                AnalyzeNode(branch, context, schemaPath, propertyName, usage, required, branchNodes);
+                return branchNodes.Where(node => node.SchemaPath != schemaPath);
+            })
+            .GroupBy(static node => node.SchemaPath, StringComparer.Ordinal)
+            .Select(group => MergeBranchNodes(group.ToArray(), group.Count() == branches.Length));
+    }
+
+    private static ApiJsonSchemaNode MergeBranchNodes(IReadOnlyList<ApiJsonSchemaNode> nodes, bool inEveryBranch)
+    {
+        var first = nodes[0];
+        var reasons = nodes.SelectMany(static node => node.AmbiguityReasons).Distinct(StringComparer.Ordinal).ToList();
+        if (!inEveryBranch)
+        {
+            reasons.Add("Field is not present in every oneOf/anyOf branch.");
+        }
+
+        return first with
+        {
+            Usage = Agree(nodes, static node => node.Usage, ApiSchemaUsage.Ambiguous),
+            Required = inEveryBranch ? Agree(nodes, static node => node.Required, ApiSchemaCondition.Ambiguous) : ApiSchemaCondition.Ambiguous,
+            Nullable = Agree(nodes, static node => node.Nullable, ApiSchemaCondition.Ambiguous),
+            HasDefault = Agree(nodes, static node => node.HasDefault, ApiSchemaCondition.Ambiguous),
+            EnumValues = nodes.Any(static node => node.EnumValues.Count == 0)
+                ? []
+                : nodes.SelectMany(static node => node.EnumValues).Distinct(StringComparer.Ordinal).ToArray(),
+            AmbiguityReasons = reasons
+        };
+    }
+
+    private static T Agree<T>(IReadOnlyList<ApiJsonSchemaNode> nodes, Func<ApiJsonSchemaNode, T> selector, T fallback)
+    {
+        var value = selector(nodes[0]);
+        return nodes.All(node => EqualityComparer<T>.Default.Equals(selector(node), value)) ? value : fallback;
     }
 
     private static ApiJsonSchemaNodeKind DetermineKind(IOpenApiSchema schema)

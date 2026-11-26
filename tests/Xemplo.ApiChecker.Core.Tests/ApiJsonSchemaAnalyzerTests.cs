@@ -106,7 +106,7 @@ public class ApiJsonSchemaAnalyzerTests
     }
 
     [Fact]
-    public void Analyze_CompositionMarksNodeAsAmbiguous()
+    public void Analyze_OneOf_MarksNodeAsAmbiguousAndTraversesBranches()
     {
         var analyzer = new ApiJsonSchemaAnalyzer();
         var composedSchema = new OpenApiSchema
@@ -124,7 +124,28 @@ public class ApiJsonSchemaAnalyzerTests
 
         Assert.Equal(ApiSchemaCondition.Ambiguous, node.Nullable);
         Assert.NotEmpty(node.AmbiguityReasons);
-        Assert.DoesNotContain(result.Nodes, static candidate => candidate.SchemaPath.Equals("$.payload.id", StringComparison.Ordinal));
+        Assert.Equal(ApiSchemaCondition.Ambiguous, AssertNode(result, "$.payload.id").Required);
+    }
+
+    [Fact]
+    public void Analyze_AnyOf_MergesFieldsSharedByEveryBranch()
+    {
+        var analyzer = new ApiJsonSchemaAnalyzer();
+        var schema = new OpenApiSchema
+        {
+            AnyOf =
+            [
+                ObjectSchema(("id", ScalarSchema(), true), ("note", ScalarSchema(nullable: true), false), ("status", EnumSchema("A"), false)),
+                ObjectSchema(("id", ScalarSchema(), true), ("note", ScalarSchema(), false), ("status", EnumSchema("B"), false))
+            ]
+        };
+
+        var result = analyzer.Analyze(schema, ApiSchemaContext.Request);
+
+        Assert.Single(result.Nodes, static node => node.SchemaPath == "$.id");
+        Assert.Equal(ApiSchemaCondition.True, AssertNode(result, "$.id").Required);
+        Assert.Equal(ApiSchemaCondition.Ambiguous, AssertNode(result, "$.note").Nullable);
+        Assert.Equal(["A", "B"], AssertNode(result, "$.status").EnumValues);
     }
 
     [Fact]

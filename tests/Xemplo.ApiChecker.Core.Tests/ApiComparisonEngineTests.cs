@@ -243,6 +243,30 @@ public class ApiComparisonEngineTests
     }
 
     [Fact]
+    public async Task Compare_CompositionFixtures_OnlyReportsFieldsGoneFromEveryBranch()
+    {
+        var engine = new ApiComparisonEngine();
+        var input = await LoadFixturePairAsync("composition-old.json", "composition-new.json");
+
+        var result = engine.Compare(input, ApiRuleProfile.Default);
+
+        Assert.Equal(
+            [
+                "output:removed GET /accounts $.accountNumber",
+                "output:removed GET /accounts $.cardNumber",
+                "output:new:nullable GET /onboardings/{id} $.status",
+                "output:new:nullable GET /onboardings/{id} $.title",
+                "output:new:nullable GET /onboardings/{id} $.type",
+                "output:removed GET /payment-methods $.accountNumber",
+                "output:removed GET /people/summary $.name",
+                "input:removed POST /pets/search $.lives",
+                "input:updated:optional POST /pets/search $.name",
+                "input:removed POST /pets/search $.nickname"
+            ],
+            result.Findings.Select(static finding => $"{finding.RuleId.GetIdentifier()} {finding.Operation!.Method} {finding.Operation.PathTemplate} {finding.SchemaPath}"));
+    }
+
+    [Fact]
     public void Compare_WhenExistingResponseFieldBecomesNullable_ReportsUpdatedNullableOutput()
     {
         var oldSchema = CreateObjectSchema(("summary", CreateScalarSchema(), false));
