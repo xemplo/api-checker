@@ -22,7 +22,8 @@ public sealed class ApiJsonSchemaAnalyzer : IApiJsonSchemaAnalyzer
             propertyName: null,
             inheritedUsage: ApiSchemaUsage.Included,
             required: ApiSchemaCondition.NotApplicable,
-            nodes);
+            nodes,
+            new HashSet<string>(StringComparer.Ordinal));
 
         return new ApiJsonSchemaAnalysis(nodes.OrderBy(static node => node.SchemaPath, StringComparer.Ordinal).ToArray());
     }
@@ -34,7 +35,8 @@ public sealed class ApiJsonSchemaAnalyzer : IApiJsonSchemaAnalyzer
         string? propertyName,
         ApiSchemaUsage inheritedUsage,
         ApiSchemaCondition required,
-        ICollection<ApiJsonSchemaNode> nodes)
+        ICollection<ApiJsonSchemaNode> nodes,
+        ISet<string> ancestorReferences)
     {
         var ambiguityReasons = GetAmbiguityReasons(schema, inheritedUsage);
         var usage = DetermineUsage(schema, context, inheritedUsage);
@@ -54,6 +56,12 @@ public sealed class ApiJsonSchemaAnalyzer : IApiJsonSchemaAnalyzer
             enumValues,
             ambiguityReasons));
 
+        var referenceId = (schema as OpenApiSchemaReference)?.Reference.Id;
+        if (referenceId is not null && !ancestorReferences.Add(referenceId))
+        {
+            return;
+        }
+
         var childNodes = new List<ApiJsonSchemaNode>();
         var properties = GetProperties(schema);
         if (kind == ApiJsonSchemaNodeKind.Object && properties.Count > 0)
@@ -72,7 +80,8 @@ public sealed class ApiJsonSchemaAnalyzer : IApiJsonSchemaAnalyzer
                     property.Key,
                     usage,
                     DetermineRequired(schema, property.Key, properties),
-                    childNodes);
+                    childNodes,
+                    ancestorReferences);
             }
         }
 
@@ -86,16 +95,22 @@ public sealed class ApiJsonSchemaAnalyzer : IApiJsonSchemaAnalyzer
                 propertyName: null,
                 usage,
                 ApiSchemaCondition.NotApplicable,
-                childNodes);
+                childNodes,
+                ancestorReferences);
         }
 
         var ownPaths = childNodes.Select(static node => node.SchemaPath).ToHashSet(StringComparer.Ordinal);
-        childNodes.AddRange(AnalyzeUnionBranches(schema, context, schemaPath, propertyName, usage, required)
+        childNodes.AddRange(AnalyzeUnionBranches(schema, context, schemaPath, propertyName, usage, required, ancestorReferences)
             .Where(node => !ownPaths.Contains(node.SchemaPath)));
 
         foreach (var childNode in childNodes)
         {
             nodes.Add(childNode);
+        }
+
+        if (referenceId is not null)
+        {
+            ancestorReferences.Remove(referenceId);
         }
     }
 
@@ -105,19 +120,25 @@ public sealed class ApiJsonSchemaAnalyzer : IApiJsonSchemaAnalyzer
         string schemaPath,
         string? propertyName,
         ApiSchemaUsage usage,
-        ApiSchemaCondition required)
+        ApiSchemaCondition required,
+        ISet<string> ancestorReferences)
     {
-        var branches = (schema.OneOf ?? []).Concat(schema.AnyOf ?? []).Where(static branch => branch is not null).ToArray();
-
-        return branches
-            .SelectMany(branch =>
+        var branchNodes = EnumerateAllOfSchemas(schema)
+            .SelectMany(static part => (part.OneOf ?? []).Concat(part.AnyOf ?? []))
+            .Where(static branch => branch is not null)
+            .Select(branch =>
             {
-                var branchNodes = new List<ApiJsonSchemaNode>();
-                AnalyzeNode(branch, context, schemaPath, propertyName, usage, required, branchNodes);
-                return branchNodes.Where(node => node.SchemaPath != schemaPath);
+                var nodes = new List<ApiJsonSchemaNode>();
+                AnalyzeNode(branch, context, schemaPath, propertyName, usage, required, nodes, ancestorReferences);
+                return nodes.Where(node => node.SchemaPath != schemaPath).ToArray();
             })
+            .Where(static nodes => nodes.Length > 0)
+            .ToArray();
+
+        return branchNodes
+            .SelectMany(static nodes => nodes)
             .GroupBy(static node => node.SchemaPath, StringComparer.Ordinal)
-            .Select(group => MergeBranchNodes(group.ToArray(), group.Count() == branches.Length));
+            .Select(group => MergeBranchNodes(group.ToArray(), group.Count() == branchNodes.Length));
     }
 
     private static ApiJsonSchemaNode MergeBranchNodes(IReadOnlyList<ApiJsonSchemaNode> nodes, bool inEveryBranch)

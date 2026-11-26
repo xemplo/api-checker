@@ -261,7 +261,10 @@ public class ApiComparisonEngineTests
                 "output:removed GET /people/summary $.name",
                 "input:removed POST /pets/search $.lives",
                 "input:updated:optional POST /pets/search $.name",
-                "input:removed POST /pets/search $.nickname"
+                "input:removed POST /pets/search $.nickname",
+                "output:new:nullable GET /wrapped $.status",
+                "output:new:nullable GET /wrapped $.title",
+                "output:new:nullable GET /wrapped $.type"
             ],
             result.Findings.Select(static finding => $"{finding.RuleId.GetIdentifier()} {finding.Operation!.Method} {finding.Operation.PathTemplate} {finding.SchemaPath}"));
     }

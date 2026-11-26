@@ -124,7 +124,7 @@ public class ApiJsonSchemaAnalyzerTests
 
         Assert.Equal(ApiSchemaCondition.Ambiguous, node.Nullable);
         Assert.NotEmpty(node.AmbiguityReasons);
-        Assert.Equal(ApiSchemaCondition.Ambiguous, AssertNode(result, "$.payload.id").Required);
+        Assert.Equal(ApiSchemaCondition.False, AssertNode(result, "$.payload.id").Required);
     }
 
     [Fact]
@@ -146,6 +146,24 @@ public class ApiJsonSchemaAnalyzerTests
         Assert.Equal(ApiSchemaCondition.True, AssertNode(result, "$.id").Required);
         Assert.Equal(ApiSchemaCondition.Ambiguous, AssertNode(result, "$.note").Nullable);
         Assert.Equal(["A", "B"], AssertNode(result, "$.status").EnumValues);
+    }
+
+    [Fact]
+    public void Analyze_OneOfWithNullBranch_KeepsRequiredFromObjectBranch()
+    {
+        var analyzer = new ApiJsonSchemaAnalyzer();
+        var schema = new OpenApiSchema
+        {
+            OneOf =
+            [
+                new OpenApiSchema { Type = JsonSchemaType.Null },
+                ObjectSchema(("email", ScalarSchema(), true))
+            ]
+        };
+
+        var result = analyzer.Analyze(schema, ApiSchemaContext.Request);
+
+        Assert.Equal(ApiSchemaCondition.True, AssertNode(result, "$.email").Required);
     }
 
     [Fact]

@@ -187,6 +187,49 @@
           }
         }
       }
+    },
+    "/tree": {
+      "get": {
+        "responses": {
+          "200": {
+            "description": "x",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TreeNode"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/wrapped": {
+      "get": {
+        "responses": {
+          "200": {
+            "description": "x",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "oneOf": [
+                        {
+                          "$ref": "#/components/schemas/Result"
+                        },
+                        {
+                          "$ref": "#/components/schemas/ValidationProblemDetails"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -300,6 +343,38 @@
           },
           "lives": {
             "type": "integer"
+          }
+        }
+      },
+      "Leaf": {
+        "type": "object",
+        "properties": {
+          "value": {
+            "type": "string"
+          }
+        }
+      },
+      "TreeNode": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "children": {
+            "type": "array",
+            "items": {
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/Leaf"
+                },
+                {
+                  "$ref": "#/components/schemas/TreeNode"
+                }
+              ]
+            }
+          },
+          "parent": {
+            "$ref": "#/components/schemas/TreeNode"
           }
         }
       }
