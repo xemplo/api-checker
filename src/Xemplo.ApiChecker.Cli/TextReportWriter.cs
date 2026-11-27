@@ -15,16 +15,34 @@ public static class TextReportWriter
         if (result.Findings.Count == 0)
         {
             await output.WriteLineAsync("No findings.");
-            return;
         }
-
-        await output.WriteLineAsync($"Findings: {result.Findings.Count}");
+        else
+        {
+            var acceptedCount = result.Findings.Count(static finding => finding.IsAccepted);
+            var acceptedSummary = acceptedCount == 0 ? string.Empty : $" ({acceptedCount} accepted)";
+            await output.WriteLineAsync($"Findings: {result.Findings.Count}{acceptedSummary}");
+        }
 
         foreach (var finding in result.Findings)
         {
-            var location = finding.Operation is null ? string.Empty : $" [{finding.Operation.Method} {finding.Operation.PathTemplate}]";
+            var location = FormatLocation(finding.Operation?.Method, finding.Operation?.PathTemplate, finding.StatusCode);
             var schemaPath = string.IsNullOrWhiteSpace(finding.SchemaPath) ? string.Empty : $" ({finding.SchemaPath})";
-            await output.WriteLineAsync($"- {finding.Severity}: {finding.RuleId.GetIdentifier()}{location}{schemaPath} {finding.Message}");
+            var accepted = finding.IsAccepted ? $" Accepted: {finding.AcceptedReason}" : string.Empty;
+            await output.WriteLineAsync($"- {finding.Severity}: {finding.RuleId.GetIdentifier()}{location}{schemaPath} {finding.Message}{accepted}");
         }
+
+        foreach (var change in result.UnusedAcceptedChanges)
+        {
+            var location = FormatLocation(change.Operation, change.StatusCode);
+            var schemaPaths = change.SchemaPaths is null ? string.Empty : $" ({string.Join(", ", change.SchemaPaths)})";
+            await output.WriteLineAsync(
+                $"- {ApiSeverity.Warning}: Accepted change no longer needed: {change.RuleId.GetIdentifier()}{location}{schemaPaths} {change.Reason}");
+        }
+    }
+
+    private static string FormatLocation(params string?[] parts)
+    {
+        var text = string.Join(' ', parts.Where(static part => !string.IsNullOrWhiteSpace(part)));
+        return text.Length == 0 ? string.Empty : $" [{text}]";
     }
 }

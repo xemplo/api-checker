@@ -41,12 +41,12 @@ internal sealed class OutputRuleEvaluator : IApiRuleEvaluator
                 if (oldNodes.TryGetValue(newNode.SchemaPath, out var oldNode)
                     && oldNode.Usage != ApiSchemaUsage.Excluded)
                 {
-                    AddUpdatedOutputFinding(oldNode, newNode, ruleProfile, responseMatch.NewResponse.OperationIdentity, findings);
-                    AddNewEnumOutputFindings(oldNode, newNode, ruleProfile, responseMatch.NewResponse.OperationIdentity, findings);
+                    AddUpdatedOutputFinding(oldNode, newNode, ruleProfile, responseMatch.NewResponse, findings);
+                    AddNewEnumOutputFindings(oldNode, newNode, ruleProfile, responseMatch.NewResponse, findings);
                     continue;
                 }
 
-                var finding = CreateAddedOutputFinding(newNode, ruleProfile, responseMatch.NewResponse.OperationIdentity);
+                var finding = CreateAddedOutputFinding(newNode, ruleProfile, responseMatch.NewResponse);
                 if (finding is not null)
                 {
                     findings.Add(finding);
@@ -62,13 +62,13 @@ internal sealed class OutputRuleEvaluator : IApiRuleEvaluator
 
                 if (!newNodes.TryGetValue(oldNode.SchemaPath, out var newNode))
                 {
-                    AddRemovedOutputFinding(oldNode, ruleProfile, responseMatch.NewResponse.OperationIdentity, findings);
+                    AddRemovedOutputFinding(oldNode, ruleProfile, responseMatch.NewResponse, findings);
                     continue;
                 }
 
                 if (newNode.Usage == ApiSchemaUsage.Excluded)
                 {
-                    AddRemovedOutputFinding(oldNode, ruleProfile, responseMatch.NewResponse.OperationIdentity, findings);
+                    AddRemovedOutputFinding(oldNode, ruleProfile, responseMatch.NewResponse, findings);
                 }
             }
         }
@@ -83,7 +83,7 @@ internal sealed class OutputRuleEvaluator : IApiRuleEvaluator
     private static ApiFinding? CreateAddedOutputFinding(
         ApiJsonSchemaNode node,
         ApiRuleProfile ruleProfile,
-        ApiOperationIdentity operation)
+        ApiResponseDescription response)
     {
         if (node.Nullable == ApiSchemaCondition.Ambiguous
             || node.Usage == ApiSchemaUsage.Ambiguous)
@@ -97,8 +97,9 @@ internal sealed class OutputRuleEvaluator : IApiRuleEvaluator
                 ApiRuleId.NewNullableOutput,
                 ruleProfile,
                 $"Response field '{node.SchemaPath}' was added as nullable output.",
-                operation,
-                node.SchemaPath);
+                response.OperationIdentity,
+                node.SchemaPath,
+                response.StatusCode);
         }
 
         if (node.Nullable == ApiSchemaCondition.False)
@@ -107,8 +108,9 @@ internal sealed class OutputRuleEvaluator : IApiRuleEvaluator
                 ApiRuleId.NewNonNullableOutput,
                 ruleProfile,
                 $"Response field '{node.SchemaPath}' was added as non-nullable output.",
-                operation,
-                node.SchemaPath);
+                response.OperationIdentity,
+                node.SchemaPath,
+                response.StatusCode);
         }
 
         return null;
@@ -117,7 +119,7 @@ internal sealed class OutputRuleEvaluator : IApiRuleEvaluator
     private static void AddRemovedOutputFinding(
         ApiJsonSchemaNode node,
         ApiRuleProfile ruleProfile,
-        ApiOperationIdentity operation,
+        ApiResponseDescription response,
         ICollection<ApiFinding> findings)
     {
         if (node.Usage == ApiSchemaUsage.Ambiguous)
@@ -129,8 +131,9 @@ internal sealed class OutputRuleEvaluator : IApiRuleEvaluator
             ApiRuleId.RemovedOutput,
             ruleProfile,
             $"Response field '{node.SchemaPath}' was removed.",
-            operation,
-            node.SchemaPath);
+            response.OperationIdentity,
+            node.SchemaPath,
+            response.StatusCode);
 
         if (finding is not null)
         {
@@ -142,7 +145,7 @@ internal sealed class OutputRuleEvaluator : IApiRuleEvaluator
         ApiJsonSchemaNode oldNode,
         ApiJsonSchemaNode newNode,
         ApiRuleProfile ruleProfile,
-        ApiOperationIdentity operation,
+        ApiResponseDescription response,
         ICollection<ApiFinding> findings)
     {
         if (oldNode.Usage != ApiSchemaUsage.Included
@@ -168,8 +171,9 @@ internal sealed class OutputRuleEvaluator : IApiRuleEvaluator
                 ApiRuleId.NewEnumOutput,
                 ruleProfile,
                 $"Response field '{newNode.SchemaPath}' added enum value '{enumValue}'.",
-                operation,
-                newNode.SchemaPath);
+                response.OperationIdentity,
+                newNode.SchemaPath,
+                response.StatusCode);
 
             if (finding is not null)
             {
@@ -182,7 +186,7 @@ internal sealed class OutputRuleEvaluator : IApiRuleEvaluator
         ApiJsonSchemaNode oldNode,
         ApiJsonSchemaNode newNode,
         ApiRuleProfile ruleProfile,
-        ApiOperationIdentity operation,
+        ApiResponseDescription response,
         ICollection<ApiFinding> findings)
     {
         if (oldNode.Usage != ApiSchemaUsage.Included
@@ -200,14 +204,16 @@ internal sealed class OutputRuleEvaluator : IApiRuleEvaluator
                 ApiRuleId.UpdatedNullableOutput,
                 ruleProfile,
                 $"Response field '{newNode.SchemaPath}' changed from non-nullable output to nullable output.",
-                operation,
-                newNode.SchemaPath),
+                response.OperationIdentity,
+                newNode.SchemaPath,
+                response.StatusCode),
             ApiSchemaCondition.False => ApiRuleEvaluationHelpers.CreateFinding(
                 ApiRuleId.UpdatedNonNullableOutput,
                 ruleProfile,
                 $"Response field '{newNode.SchemaPath}' changed from nullable output to non-nullable output.",
-                operation,
-                newNode.SchemaPath),
+                response.OperationIdentity,
+                newNode.SchemaPath,
+                response.StatusCode),
             _ => null
         };
 

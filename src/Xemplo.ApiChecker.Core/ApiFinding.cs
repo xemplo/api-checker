@@ -5,4 +5,9 @@ public sealed record ApiFinding(
     ApiSeverity Severity,
     string Message,
     ApiOperationIdentity? Operation = null,
-    string? SchemaPath = null);
+    string? SchemaPath = null,
+    string? StatusCode = null,
+    string? AcceptedReason = null)
+{
+    public bool IsAccepted => AcceptedReason is not null;
+}

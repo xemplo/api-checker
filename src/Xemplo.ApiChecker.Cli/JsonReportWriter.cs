@@ -28,7 +28,15 @@ public static class JsonReportWriter
                 finding.Severity.ToString().ToLowerInvariant(),
                 finding.Message,
                 finding.Operation is null ? null : new JsonOperation(finding.Operation.Method, finding.Operation.PathTemplate),
-                finding.SchemaPath)).ToArray());
+                finding.SchemaPath,
+                finding.StatusCode,
+                finding.AcceptedReason)).ToArray(),
+            result.UnusedAcceptedChanges.Select(static change => new JsonAcceptedChange(
+                change.RuleId.GetIdentifier(),
+                change.Operation,
+                change.StatusCode,
+                change.SchemaPaths,
+                change.Reason)).ToArray());
 
         return output.WriteAsync(JsonSerializer.Serialize(document, SerializerOptions));
     }
@@ -37,14 +45,24 @@ public static class JsonReportWriter
         string OldSource,
         string NewSource,
         bool HasErrorFindings,
-        IReadOnlyList<JsonFinding> Findings);
+        IReadOnlyList<JsonFinding> Findings,
+        IReadOnlyList<JsonAcceptedChange> UnusedAcceptedChanges);
 
     private sealed record JsonFinding(
         string RuleId,
         string Severity,
         string Message,
         JsonOperation? Operation,
-        string? SchemaPath);
+        string? SchemaPath,
+        string? StatusCode,
+        string? AcceptedReason);
+
+    private sealed record JsonAcceptedChange(
+        string RuleId,
+        string? Operation,
+        string? StatusCode,
+        IReadOnlyList<string>? SchemaPaths,
+        string Reason);
 
     private sealed record JsonOperation(string Method, string PathTemplate);
 }

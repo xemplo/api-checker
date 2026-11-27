@@ -6,12 +6,17 @@ public sealed class ApiRuleProfile
 
     public static ApiRuleProfile Default { get; } = new(ApiRuleCatalog.CreateDefaultSeverities());
 
-    public ApiRuleProfile(IReadOnlyDictionary<ApiRuleId, ApiSeverity> severities)
+    public ApiRuleProfile(
+        IReadOnlyDictionary<ApiRuleId, ApiSeverity> severities,
+        IReadOnlyList<ApiAcceptedChange>? acceptedChanges = null)
     {
         ArgumentNullException.ThrowIfNull(severities);
 
         _severities = new Dictionary<ApiRuleId, ApiSeverity>(severities);
+        AcceptedChanges = acceptedChanges?.ToArray() ?? [];
     }
+
+    public IReadOnlyList<ApiAcceptedChange> AcceptedChanges { get; }
 
     public ApiSeverity GetSeverity(ApiRuleId ruleId)
     {

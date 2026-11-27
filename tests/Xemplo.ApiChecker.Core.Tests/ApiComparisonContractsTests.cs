@@ -106,6 +106,15 @@ public class ApiComparisonContractsTests
     }
 
     [Fact]
+    public void ComparisonResult_WithOnlyAcceptedErrors_DoesNotReportErrorFindings()
+    {
+        var result = new ApiComparisonResult(
+            [new ApiFinding(ApiRuleId.RemovedOutput, ApiSeverity.Error, "removed", AcceptedReason: "Agreed")]);
+
+        Assert.False(result.HasErrorFindings);
+    }
+
+    [Fact]
     public void EmptyComparisonResult_HasNoFindingsOrErrors()
     {
         Assert.Empty(ApiComparisonResult.Empty.Findings);

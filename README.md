@@ -106,6 +106,45 @@ Example `api-rules.json`:
 }
 ```
 
+### Accepted Changes
+
+Sometimes a break is agreed, or the old spec was simply wrong. Rather than switching a whole rule off, add an `accepted` array next to `rules` to accept specific findings:
+
+```json
+{
+  "rules": {
+    "output:removed": "error"
+  },
+  "accepted": [
+    {
+      "rule": "output:removed",
+      "operation": "*",
+      "status": "400",
+      "path": ["$.type", "$.title", "$.status", "$.detail", "$.instance"],
+      "reason": "Errors moved from ValidationProblemDetails to Result"
+    },
+    {
+      "rule": "output:removed",
+      "operation": "GET /api/v1/questions/{questionId}/answers",
+      "status": "200",
+      "reason": "Old spec declared the wrong 200 schema"
+    }
+  ]
+}
+```
+
+- `rule` (required) - the rule identifier to accept
+- `reason` (required) - why the change is accepted
+- `operation` (optional) - `METHOD /path` as it appears in the spec, or `*` for any operation
+- `status` (optional) - the response status code, e.g. `400`, `2XX` or `default`, or `*` for any
+- `path` (optional) - a schema path, or a list of schema paths, matched exactly (e.g. `$.result.id`)
+
+Omitted filters match anything. A finding matching any entry is still reported, marked as accepted, and never fails the run regardless of its severity.
+
+Any entry that matches nothing is reported as an `Accepted change no longer needed` warning, so it can be removed. This never fails the run.
+
+When both `api-rules.json` and `--config` are used, accepted changes from both files apply.
+
 ## Output And Exit Codes
 
 `compare` uses text output by default. JSON output is available with `--output json` and includes stable fields for:
@@ -114,11 +153,24 @@ Example `api-rules.json`:
 - Severity
 - Message
 - Operation identity
+- Response status code when applicable
 - Schema path when applicable
+- Accepted reason when the finding matched an accepted change
+- Unused accepted changes (`unusedAcceptedChanges`)
+
+Text output looks like this:
+
+```text
+Comparing old.json -> new.json
+Findings: 2 (1 accepted)
+- Error: output:removed [GET /api/v1/lookups/{key} 400] ($.title) Response field '$.title' was removed. Accepted: Errors moved from ValidationProblemDetails to Result
+- Warning: endpoint:new [POST /api/v1/lookups] Endpoint 'POST /api/v1/lookups' was added.
+- Warning: Accepted change no longer needed: output:removed [GET /api/v1/questions/{questionId}/answers 200] Old spec declared the wrong 200 schema
+```
 
 Exit codes:
 - `0`: compare completed without error-level findings, or validate completed successfully
-- `1`: compare found one or more error-level findings
+- `1`: compare found one or more error-level findings that were not accepted
 - `2`: invalid configuration, invalid input, fetch failures, parse failures, unsupported external references, or other runtime failures
 
 ## Contributing

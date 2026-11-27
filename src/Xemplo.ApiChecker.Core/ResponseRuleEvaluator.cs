@@ -37,7 +37,8 @@ internal sealed class ResponseRuleEvaluator : IApiRuleEvaluator
                 ApiRuleId.NewResponseCode,
                 ruleProfile,
                 $"Response code '{responseGroup.Key}' was added.",
-                operationMatch.NewOperation.Identity);
+                operationMatch.NewOperation.Identity,
+                responseGroup.Key);
 
             if (finding is not null)
             {

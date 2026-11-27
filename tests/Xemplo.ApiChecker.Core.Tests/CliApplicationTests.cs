@@ -1035,6 +1035,109 @@ public class CliApplicationTests
         Assert.Equal(string.Empty, error.ToString());
     }
 
+    [Fact]
+    public async Task RunAsync_WithAcceptedChanges_ReportsAcceptedFindingsAndStaleEntriesWithoutFailing()
+    {
+        var directory = CreateTempDirectory();
+        var oldPath = GetFixturePath("response-body-old.json");
+        var newPath = GetFixturePath("response-body-new.json");
+        var output = new StringWriter();
+        var error = new StringWriter();
+
+        await File.WriteAllTextAsync(Path.Combine(directory, "api-rules.json"), """
+            {
+              "rules": {},
+              "accepted": [
+                { "rule": "output:removed", "operation": "GET /pets", "status": "200", "path": "$.result.legacy", "reason": "Agreed removal" },
+                { "rule": "output:removed", "operation": "*", "status": "400", "path": ["$.type", "$.title"], "reason": "Moved to Result" }
+              ]
+            }
+            """);
+
+        try
+        {
+            var exitCode = await CliApplication.RunAsync(["compare", "--old", oldPath, "--new", newPath], output, error, workingDirectory: directory);
+
+            Assert.Equal(0, exitCode);
+            Assert.Contains("(1 accepted)", output.ToString());
+            Assert.Contains("- Error: output:removed [GET /pets 200] ($.result.legacy) Response field '$.result.legacy' was removed. Accepted: Agreed removal", output.ToString());
+            Assert.Contains("- Warning: Accepted change no longer needed: output:removed [* 400] ($.type, $.title) Moved to Result", output.ToString());
+            Assert.Equal(string.Empty, error.ToString());
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task RunAsync_WithAcceptedChangesAndJsonOutput_WritesAcceptedFields()
+    {
+        var loader = Substitute.For<IApiSpecificationLoader>();
+        var engine = Substitute.For<IApiComparisonEngine>();
+        var output = new StringWriter();
+        var error = new StringWriter();
+
+        loader.LoadAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(ApiSpecificationLoadResult.Success(new ApiSpecificationDocument(new OpenApiDocument(), "spec.json")));
+        engine.Compare(Arg.Any<ApiComparisonInput>(), ApiRuleProfile.Default)
+            .Returns(new ApiComparisonResult(
+                [new ApiFinding(ApiRuleId.RemovedOutput, ApiSeverity.Error, "removed", new ApiOperationIdentity("GET", "/pets"), "$.id", "400", "Agreed")],
+                [new ApiAcceptedChange(ApiRuleId.EndpointRemoved, "Stale", "GET /old", SchemaPaths: ["$.a"])]));
+
+        var exitCode = await CliApplication.RunAsync(
+            ["compare", "--old", "old.json", "--new", "new.json", "--output", "json"],
+            output,
+            error,
+            loader,
+            engine);
+
+        Assert.Equal(0, exitCode);
+
+        using var document = JsonDocument.Parse(output.ToString());
+        var root = document.RootElement;
+        Assert.False(root.GetProperty("hasErrorFindings").GetBoolean());
+
+        var finding = root.GetProperty("findings")[0];
+        Assert.Equal("400", finding.GetProperty("statusCode").GetString());
+        Assert.Equal("Agreed", finding.GetProperty("acceptedReason").GetString());
+
+        var unused = root.GetProperty("unusedAcceptedChanges")[0];
+        Assert.Equal("endpoint:removed", unused.GetProperty("ruleId").GetString());
+        Assert.Equal("GET /old", unused.GetProperty("operation").GetString());
+        Assert.False(unused.TryGetProperty("statusCode", out _));
+        Assert.Equal("$.a", unused.GetProperty("schemaPaths")[0].GetString());
+        Assert.Equal("Stale", unused.GetProperty("reason").GetString());
+    }
+
+    [Fact]
+    public async Task RunAsync_WithInvalidAcceptedChange_ReturnsConfigurationFailure()
+    {
+        var directory = CreateTempDirectory();
+        var output = new StringWriter();
+        var error = new StringWriter();
+
+        await File.WriteAllTextAsync(Path.Combine(directory, "api-rules.json"), """
+            { "rules": {}, "accepted": [{ "rule": "output:removed" }] }
+            """);
+
+        try
+        {
+            var exitCode = await CliApplication.RunAsync(
+                ["compare", "--old", GetFixturePath("response-body-old.json"), "--new", GetFixturePath("response-body-new.json")],
+                output,
+                error,
+                workingDirectory: directory);
+
+            Assert.Equal(2, exitCode);
+            Assert.Contains("Invalid configuration: accepted[0] must have a 'reason'.", error.ToString());
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
     private static string GetFixturePath(string fileName)
     {
         return Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "fixtures", fileName));

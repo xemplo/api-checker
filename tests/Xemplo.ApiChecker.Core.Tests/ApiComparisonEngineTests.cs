@@ -387,6 +387,52 @@ public class ApiComparisonEngineTests
         Assert.Contains("getPets", finding.Message, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public async Task Compare_ResponseFindings_IncludeStatusCode()
+    {
+        var engine = new ApiComparisonEngine();
+        var bodyInput = await LoadFixturePairAsync("response-body-old.json", "response-body-new.json");
+        var surfaceInput = await LoadFixturePairAsync("endpoint-responsecode-old.json", "endpoint-responsecode-new.json");
+
+        var bodyResult = engine.Compare(bodyInput, ApiRuleProfile.Default);
+        var surfaceResult = engine.Compare(surfaceInput, ApiRuleProfile.Default);
+
+        Assert.All(bodyResult.Findings, static finding => Assert.Equal("200", finding.StatusCode));
+        Assert.Equal("201", Assert.Single(surfaceResult.Findings, static finding => finding.RuleId == ApiRuleId.NewResponseCode).StatusCode);
+    }
+
+    [Fact]
+    public async Task Compare_WithAcceptedChanges_MarksMatchingFindingsAndReportsUnusedEntries()
+    {
+        var engine = new ApiComparisonEngine();
+        var input = await LoadFixturePairAsync("response-body-old.json", "response-body-new.json");
+        var used = new ApiAcceptedChange(ApiRuleId.RemovedOutput, "Agreed", "GET /pets", "200", ["$.result.legacy"]);
+        var stale = new ApiAcceptedChange(ApiRuleId.RemovedOutput, "Stale", "GET /pets", "400");
+        var profile = new ApiRuleProfile(ApiRuleCatalog.CreateDefaultSeverities(), [used, stale]);
+
+        var result = engine.Compare(input, profile);
+
+        var accepted = Assert.Single(result.Findings, static finding => finding.IsAccepted);
+        Assert.Equal(ApiRuleId.RemovedOutput, accepted.RuleId);
+        Assert.Equal(ApiSeverity.Error, accepted.Severity);
+        Assert.Equal("Agreed", accepted.AcceptedReason);
+        Assert.Equal(stale, Assert.Single(result.UnusedAcceptedChanges));
+        Assert.False(result.HasErrorFindings);
+    }
+
+    [Fact]
+    public void Compare_WithNoFindings_ReportsAllAcceptedChangesAsUnused()
+    {
+        var engine = new ApiComparisonEngine();
+        var change = new ApiAcceptedChange(ApiRuleId.EndpointRemoved, "Gone");
+        var profile = new ApiRuleProfile(ApiRuleCatalog.CreateDefaultSeverities(), [change]);
+
+        var result = engine.Compare(ApiComparisonInput.Empty, profile);
+
+        Assert.Empty(result.Findings);
+        Assert.Equal(change, Assert.Single(result.UnusedAcceptedChanges));
+    }
+
     private static async Task<ApiComparisonInput> LoadRequestBodyFixturePairAsync()
     {
         return await LoadFixturePairAsync("request-body-old.json", "request-body-new.json");

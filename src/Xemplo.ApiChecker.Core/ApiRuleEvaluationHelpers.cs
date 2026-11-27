@@ -7,23 +7,25 @@ internal static class ApiRuleEvaluationHelpers
         ApiRuleProfile ruleProfile,
         string message,
         ApiOperationIdentity operation,
-        string schemaPath)
+        string schemaPath,
+        string? statusCode = null)
     {
         var severity = ruleProfile.GetSeverity(ruleId);
         return severity == ApiSeverity.Off
             ? null
-            : new ApiFinding(ruleId, severity, message, operation, schemaPath);
+            : new ApiFinding(ruleId, severity, message, operation, schemaPath, statusCode);
     }
 
     public static ApiFinding? CreateOperationFinding(
         ApiRuleId ruleId,
         ApiRuleProfile ruleProfile,
         string message,
-        ApiOperationIdentity operation)
+        ApiOperationIdentity operation,
+        string? statusCode = null)
     {
         var severity = ruleProfile.GetSeverity(ruleId);
         return severity == ApiSeverity.Off
             ? null
-            : new ApiFinding(ruleId, severity, message, operation);
+            : new ApiFinding(ruleId, severity, message, operation, StatusCode: statusCode);
     }
 }
