@@ -26,6 +26,9 @@ internal sealed class OutputRuleEvaluator : IApiRuleEvaluator
     {
         foreach (var responseMatch in operationMatch.MatchedResponses)
         {
+            var response = responseMatch.NewResponse.StatusCode.Equals("default", StringComparison.OrdinalIgnoreCase)
+                ? responseMatch.NewResponse with { StatusCode = responseMatch.OldResponse.StatusCode }
+                : responseMatch.NewResponse;
             var oldAnalysis = _schemaAnalyzer.Analyze(responseMatch.OldResponse.Media.Schema, ApiSchemaContext.Response);
             var newAnalysis = _schemaAnalyzer.Analyze(responseMatch.NewResponse.Media.Schema, ApiSchemaContext.Response);
             var oldNodes = oldAnalysis.Nodes.ToDictionary(static node => node.SchemaPath, StringComparer.Ordinal);
@@ -41,12 +44,12 @@ internal sealed class OutputRuleEvaluator : IApiRuleEvaluator
                 if (oldNodes.TryGetValue(newNode.SchemaPath, out var oldNode)
                     && oldNode.Usage != ApiSchemaUsage.Excluded)
                 {
-                    AddUpdatedOutputFinding(oldNode, newNode, ruleProfile, responseMatch.NewResponse, findings);
-                    AddNewEnumOutputFindings(oldNode, newNode, ruleProfile, responseMatch.NewResponse, findings);
+                    AddUpdatedOutputFinding(oldNode, newNode, ruleProfile, response, findings);
+                    AddNewEnumOutputFindings(oldNode, newNode, ruleProfile, response, findings);
                     continue;
                 }
 
-                var finding = CreateAddedOutputFinding(newNode, ruleProfile, responseMatch.NewResponse);
+                var finding = CreateAddedOutputFinding(newNode, ruleProfile, response);
                 if (finding is not null)
                 {
                     findings.Add(finding);
@@ -62,13 +65,13 @@ internal sealed class OutputRuleEvaluator : IApiRuleEvaluator
 
                 if (!newNodes.TryGetValue(oldNode.SchemaPath, out var newNode))
                 {
-                    AddRemovedOutputFinding(oldNode, ruleProfile, responseMatch.NewResponse, findings);
+                    AddRemovedOutputFinding(oldNode, ruleProfile, response, findings);
                     continue;
                 }
 
                 if (newNode.Usage == ApiSchemaUsage.Excluded)
                 {
-                    AddRemovedOutputFinding(oldNode, ruleProfile, responseMatch.NewResponse, findings);
+                    AddRemovedOutputFinding(oldNode, ruleProfile, response, findings);
                 }
             }
         }

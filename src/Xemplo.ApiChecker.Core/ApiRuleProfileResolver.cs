@@ -147,7 +147,11 @@ public static class ApiRuleProfileResolver
                 case "rule": rule = ReadString(property, label); break;
                 case "reason": reason = ReadString(property, label); break;
                 case "operation": operation = ReadString(property, label); break;
-                case "status": status = ReadString(property, label); break;
+                case "status":
+                    status = property.Value.ValueKind == JsonValueKind.Number
+                        ? property.Value.GetRawText()
+                        : ReadString(property, label);
+                    break;
                 case "path": paths = ReadPaths(property, label); break;
                 default:
                     throw new ApiRuleProfileConfigurationException($"{label} has unsupported property '{property.Name}'.");

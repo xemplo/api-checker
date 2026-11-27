@@ -23,6 +23,7 @@ public class ApiAcceptedChangeTests
     [InlineData("*", true)]
     [InlineData("PUT /api/v1/lookups/{key}", false)]
     [InlineData("GET /api/v1/lookups", false)]
+    [InlineData("GET /API/v1/lookups/{key}", false)]
     public void Matches_FiltersByOperation(string operation, bool expected)
     {
         Assert.Equal(expected, new ApiAcceptedChange(ApiRuleId.RemovedOutput, "reason", Operation: operation).Matches(Finding));
@@ -92,6 +93,14 @@ public class ApiAcceptedChangeTests
     }
 
     [Fact]
+    public async Task LoadFromFile_AcceptsNumericStatus()
+    {
+        var profile = await LoadAsync("""{ "rules": {}, "accepted": [{ "rule": "output:removed", "status": 400, "reason": "x" }] }""");
+
+        Assert.Equal("400", Assert.Single(profile.AcceptedChanges).StatusCode);
+    }
+
+    [Fact]
     public void ApplyOverrides_KeepsAcceptedChanges()
     {
         var baseProfile = new ApiRuleProfile(
@@ -113,7 +122,7 @@ public class ApiAcceptedChangeTests
     [InlineData("""{ "rules": {}, "accepted": [{ "rule": "output:gone", "reason": "x" }] }""", "accepted[0] rule 'output:gone' is not supported.")]
     [InlineData("""{ "rules": {}, "accepted": [{ "rule": "output:removed" }] }""", "accepted[0] must have a 'reason'.")]
     [InlineData("""{ "rules": {}, "accepted": [{ "rule": "output:removed", "reason": " " }] }""", "accepted[0] 'reason' must be a non-empty string.")]
-    [InlineData("""{ "rules": {}, "accepted": [{ "rule": "output:removed", "reason": "x", "status": 400 }] }""", "accepted[0] 'status' must be a non-empty string.")]
+    [InlineData("""{ "rules": {}, "accepted": [{ "rule": "output:removed", "reason": "x", "status": true }] }""", "accepted[0] 'status' must be a non-empty string.")]
     [InlineData("""{ "rules": {}, "accepted": [{ "rule": "output:removed", "reason": "x", "operation": "/pets" }] }""", "accepted[0] operation '/pets' must be '*' or 'METHOD /path'.")]
     [InlineData("""{ "rules": {}, "accepted": [{ "rule": "output:removed", "reason": "x", "path": [] }] }""", "accepted[0] 'path' must be a non-empty string or a non-empty list of non-empty strings.")]
     [InlineData("""{ "rules": {}, "accepted": [{ "rule": "output:removed", "reason": "x", "path": ["$.a", 1] }] }""", "accepted[0] 'path' must be a non-empty string or a non-empty list of non-empty strings.")]

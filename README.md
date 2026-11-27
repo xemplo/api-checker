@@ -108,7 +108,7 @@ Example `api-rules.json`:
 
 ### Accepted Changes
 
-Sometimes a break is agreed, or the old spec was simply wrong. Rather than switching a whole rule off, add an `accepted` array next to `rules` to accept specific findings:
+Sometimes a break is agreed, or the old spec was simply wrong. Rather than switching a whole rule off, add an `accepted` array next to `rules` (which is still required, even if empty) to accept specific findings:
 
 ```json
 {
@@ -135,7 +135,7 @@ Sometimes a break is agreed, or the old spec was simply wrong. Rather than switc
 
 - `rule` (required) - the rule identifier to accept
 - `reason` (required) - why the change is accepted
-- `operation` (optional) - `METHOD /path` as it appears in the spec, or `*` for any operation
+- `operation` (optional) - `METHOD /path` as it appears in the spec (the path is case-sensitive), or `*` for any operation
 - `status` (optional) - the response status code, e.g. `400`, `2XX` or `default`, or `*` for any
 - `path` (optional) - a schema path, or a list of schema paths, matched exactly (e.g. `$.result.id`)
 
@@ -144,6 +144,8 @@ Omitted filters match anything. A finding matching any entry is still reported, 
 Any entry that matches nothing is reported as an `Accepted change no longer needed` warning, so it can be removed. This never fails the run.
 
 When both `api-rules.json` and `--config` are used, accepted changes from both files apply.
+
+In JSON output an accepted finding keeps its rule's `severity` and gains an `acceptedReason`, so gate on `hasErrorFindings` rather than counting `error` severities.
 
 ## Output And Exit Codes
 

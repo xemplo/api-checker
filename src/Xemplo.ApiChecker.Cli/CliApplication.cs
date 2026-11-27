@@ -153,7 +153,9 @@ public static class CliApplication
         var profile = ApiRuleProfile.Default;
         var discoveredConfigPath = Path.Combine(currentDirectory, "api-rules.json");
 
-        if (File.Exists(discoveredConfigPath))
+        var discoveredConfigExists = File.Exists(discoveredConfigPath);
+
+        if (discoveredConfigExists)
         {
             profile = await ApiRuleProfileResolver.LoadFromFileAsync(discoveredConfigPath, profile, cancellationToken);
         }
@@ -163,8 +165,13 @@ public static class CliApplication
             var explicitConfigPath = Path.IsPathRooted(options.ConfigPath)
                 ? options.ConfigPath
                 : Path.Combine(currentDirectory, options.ConfigPath);
+            var alreadyLoaded = discoveredConfigExists
+                && string.Equals(Path.GetFullPath(explicitConfigPath), Path.GetFullPath(discoveredConfigPath), StringComparison.OrdinalIgnoreCase);
 
-            profile = await ApiRuleProfileResolver.LoadFromFileAsync(explicitConfigPath, profile, cancellationToken);
+            if (!alreadyLoaded)
+            {
+                profile = await ApiRuleProfileResolver.LoadFromFileAsync(explicitConfigPath, profile, cancellationToken);
+            }
         }
 
         return options.RuleOverrides.Count == 0

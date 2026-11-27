@@ -1071,6 +1071,35 @@ public class CliApplicationTests
     }
 
     [Fact]
+    public async Task RunAsync_WithUnmatchedErrorFinding_StillFailsWhenAcceptedChangesExist()
+    {
+        var directory = CreateTempDirectory();
+        var output = new StringWriter();
+        var error = new StringWriter();
+
+        await File.WriteAllTextAsync(Path.Combine(directory, "api-rules.json"), """
+            { "rules": {}, "accepted": [{ "rule": "output:removed", "path": "$.result.other", "reason": "Not this one" }] }
+            """);
+
+        try
+        {
+            var exitCode = await CliApplication.RunAsync(
+                ["compare", "--old", GetFixturePath("response-body-old.json"), "--new", GetFixturePath("response-body-new.json"), "--config", "api-rules.json"],
+                output,
+                error,
+                workingDirectory: directory);
+
+            Assert.Equal(1, exitCode);
+            Assert.DoesNotContain("Accepted:", output.ToString());
+            Assert.Single(output.ToString().Split('\n'), static line => line.Contains("Accepted change no longer needed", StringComparison.Ordinal));
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    [Fact]
     public async Task RunAsync_WithAcceptedChangesAndJsonOutput_WritesAcceptedFields()
     {
         var loader = Substitute.For<IApiSpecificationLoader>();

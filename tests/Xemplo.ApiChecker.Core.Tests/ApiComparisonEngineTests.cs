@@ -421,6 +421,43 @@ public class ApiComparisonEngineTests
     }
 
     [Fact]
+    public void Compare_WhenExplicitResponseFallsBackToDefault_ReportsExplicitStatusCode()
+    {
+        var oldSchema = CreateObjectSchema(("title", CreateScalarSchema(), false));
+        var newSchema = CreateObjectSchema();
+        var analyzer = CreateSchemaAnalyzer(
+            (oldSchema, ApiSchemaContext.Response, CreateAnalysis(("$.title", ApiSchemaCondition.False, ApiSchemaCondition.False))),
+            (newSchema, ApiSchemaContext.Response, ApiJsonSchemaAnalysis.Empty));
+        var engine = new ApiComparisonEngine(schemaAnalyzer: analyzer);
+        var input = new ApiComparisonInput(
+            CreateSpecification(CreateResponseBodyOperation(oldSchema, "400")),
+            CreateSpecification(CreateResponseBodyOperation(newSchema, "default")));
+
+        var finding = Assert.Single(engine.Compare(input, ApiRuleProfile.Default).Findings);
+
+        Assert.Equal(ApiRuleId.RemovedOutput, finding.RuleId);
+        Assert.Equal("400", finding.StatusCode);
+    }
+
+    [Fact]
+    public async Task Compare_WhenFindingMatchesSeveralAcceptedChanges_UsesFirstReasonAndMarksAllUsed()
+    {
+        var engine = new ApiComparisonEngine();
+        var input = await LoadFixturePairAsync("response-body-old.json", "response-body-new.json");
+        var profile = new ApiRuleProfile(
+            ApiRuleCatalog.CreateDefaultSeverities(),
+            [
+                new ApiAcceptedChange(ApiRuleId.RemovedOutput, "First", SchemaPaths: ["$.result.legacy"]),
+                new ApiAcceptedChange(ApiRuleId.RemovedOutput, "Second", "*")
+            ]);
+
+        var result = engine.Compare(input, profile);
+
+        Assert.Equal("First", Assert.Single(result.Findings, static finding => finding.IsAccepted).AcceptedReason);
+        Assert.Empty(result.UnusedAcceptedChanges);
+    }
+
+    [Fact]
     public void Compare_WithNoFindings_ReportsAllAcceptedChangesAsUnused()
     {
         var engine = new ApiComparisonEngine();
@@ -497,13 +534,13 @@ public class ApiComparisonEngineTests
         };
     }
 
-    private static OpenApiOperation CreateResponseBodyOperation(OpenApiSchema responseSchema)
+    private static OpenApiOperation CreateResponseBodyOperation(OpenApiSchema responseSchema, string statusCode = "200")
     {
         return new OpenApiOperation
         {
             Responses = new OpenApiResponses
             {
-                ["200"] = new OpenApiResponse
+                [statusCode] = new OpenApiResponse
                 {
                     Description = "ok",
                     Content = new Dictionary<string, OpenApiMediaType>

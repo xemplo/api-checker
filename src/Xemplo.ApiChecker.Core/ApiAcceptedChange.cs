@@ -16,13 +16,21 @@ public sealed record ApiAcceptedChange(
         ArgumentNullException.ThrowIfNull(finding);
 
         return finding.RuleId == RuleId
-            && FilterMatches(Operation, finding.Operation is null ? null : $"{finding.Operation.Method} {finding.Operation.PathTemplate}")
-            && FilterMatches(StatusCode, finding.StatusCode)
+            && OperationMatches(finding.Operation)
+            && (StatusCode is null or "*" || string.Equals(StatusCode, finding.StatusCode, StringComparison.OrdinalIgnoreCase))
             && (SchemaPaths is null || SchemaPaths.Contains(finding.SchemaPath, StringComparer.Ordinal));
     }
 
-    private static bool FilterMatches(string? filter, string? value)
+    private bool OperationMatches(ApiOperationIdentity? operation)
     {
-        return filter is null or "*" || string.Equals(filter, value, StringComparison.OrdinalIgnoreCase);
+        if (Operation is null or "*")
+        {
+            return true;
+        }
+
+        var parts = Operation.Split(' ');
+        return operation is not null
+            && parts[0].Equals(operation.Method, StringComparison.OrdinalIgnoreCase)
+            && parts[1].Equals(operation.PathTemplate, StringComparison.Ordinal);
     }
 }
