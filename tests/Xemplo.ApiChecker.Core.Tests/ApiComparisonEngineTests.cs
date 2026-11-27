@@ -1,5 +1,5 @@
 using Xemplo.ApiChecker.Core;
-using Microsoft.OpenApi.Models;
+using Microsoft.OpenApi;
 using NSubstitute;
 
 namespace Xemplo.ApiChecker.Core.Tests;
@@ -243,6 +243,33 @@ public class ApiComparisonEngineTests
     }
 
     [Fact]
+    public async Task Compare_CompositionFixtures_OnlyReportsFieldsGoneFromEveryBranch()
+    {
+        var engine = new ApiComparisonEngine();
+        var input = await LoadFixturePairAsync("composition-old.json", "composition-new.json");
+
+        var result = engine.Compare(input, ApiRuleProfile.Default);
+
+        Assert.Equal(
+            [
+                "output:removed GET /accounts $.accountNumber",
+                "output:removed GET /accounts $.cardNumber",
+                "output:new:nullable GET /onboardings/{id} $.status",
+                "output:new:nullable GET /onboardings/{id} $.title",
+                "output:new:nullable GET /onboardings/{id} $.type",
+                "output:removed GET /payment-methods $.accountNumber",
+                "output:removed GET /people/summary $.name",
+                "input:removed POST /pets/search $.lives",
+                "input:updated:optional POST /pets/search $.name",
+                "input:removed POST /pets/search $.nickname",
+                "output:new:nullable GET /wrapped $.status",
+                "output:new:nullable GET /wrapped $.title",
+                "output:new:nullable GET /wrapped $.type"
+            ],
+            result.Findings.Select(static finding => $"{finding.RuleId.GetIdentifier()} {finding.Operation!.Method} {finding.Operation.PathTemplate} {finding.SchemaPath}"));
+    }
+
+    [Fact]
     public void Compare_WhenExistingResponseFieldBecomesNullable_ReportsUpdatedNullableOutput()
     {
         var oldSchema = CreateObjectSchema(("summary", CreateScalarSchema(), false));
@@ -386,7 +413,7 @@ public class ApiComparisonEngineTests
 
     private static ApiSpecificationDocument CreateSpecification(
         OpenApiOperation operation,
-        IReadOnlyList<Microsoft.OpenApi.Models.Interfaces.IOpenApiParameter>? pathItemParameters = null,
+        IReadOnlyList<Microsoft.OpenApi.IOpenApiParameter>? pathItemParameters = null,
         System.Net.Http.HttpMethod? method = null)
     {
         var pathItem = new OpenApiPathItem
@@ -443,7 +470,7 @@ public class ApiComparisonEngineTests
     }
 
     private static OpenApiOperation CreateGetOperation(
-        IReadOnlyList<Microsoft.OpenApi.Models.Interfaces.IOpenApiParameter>? operationParameters = null,
+        IReadOnlyList<Microsoft.OpenApi.IOpenApiParameter>? operationParameters = null,
         string? operationId = null)
     {
         return new OpenApiOperation
@@ -461,7 +488,7 @@ public class ApiComparisonEngineTests
     {
         var schema = new OpenApiSchema
         {
-            Properties = new Dictionary<string, Microsoft.OpenApi.Models.Interfaces.IOpenApiSchema>(),
+            Properties = new Dictionary<string, Microsoft.OpenApi.IOpenApiSchema>(),
             Required = new HashSet<string>(StringComparer.Ordinal)
         };
 
@@ -479,14 +506,11 @@ public class ApiComparisonEngineTests
 
     private static OpenApiSchema CreateScalarSchema(bool readOnly = false, bool nullable = false)
     {
-        var schema = new OpenApiSchema
+        return new OpenApiSchema
         {
             ReadOnly = readOnly,
-            Type = JsonSchemaType.String
+            Type = nullable ? JsonSchemaType.String | JsonSchemaType.Null : JsonSchemaType.String
         };
-
-        SetNullable(schema, nullable);
-        return schema;
     }
 
     private static OpenApiSchema CreateOneOfScalarSchema()
@@ -520,57 +544,18 @@ public class ApiComparisonEngineTests
         };
     }
 
-    private static void SetNullable(OpenApiSchema schema, bool value)
-    {
-        var property = typeof(OpenApiSchema).GetProperty("Nullable");
-        if (property is not null)
-        {
-            if (property.PropertyType == typeof(bool))
-            {
-                property.SetValue(schema, value);
-                return;
-            }
-
-            if (property.PropertyType == typeof(bool?))
-            {
-                property.SetValue(schema, (bool?)value);
-                return;
-            }
-        }
-
-        if (!value)
-        {
-            return;
-        }
-
-        var typeProperty = typeof(OpenApiSchema).GetProperty("Type");
-        if (typeProperty?.PropertyType == typeof(string))
-        {
-            typeProperty.SetValue(schema, "string,null");
-            return;
-        }
-
-        if (typeProperty?.PropertyType.IsEnum == true)
-        {
-            var stringValue = Enum.Parse(typeProperty.PropertyType, "String", ignoreCase: true);
-            var nullValue = Enum.Parse(typeProperty.PropertyType, "Null", ignoreCase: true);
-            var combinedValue = Convert.ToUInt64(stringValue) | Convert.ToUInt64(nullValue);
-            typeProperty.SetValue(schema, Enum.ToObject(typeProperty.PropertyType, combinedValue));
-        }
-    }
-
     private static IApiJsonSchemaAnalyzer CreateSchemaAnalyzer(
         params (OpenApiSchema Schema, ApiSchemaContext Context, ApiJsonSchemaAnalysis Analysis)[] mappings)
     {
         var analyzer = Substitute.For<IApiJsonSchemaAnalyzer>();
 
-        analyzer.Analyze(Arg.Any<Microsoft.OpenApi.Models.Interfaces.IOpenApiSchema?>(), Arg.Any<ApiSchemaContext>(), Arg.Any<string>())
+        analyzer.Analyze(Arg.Any<Microsoft.OpenApi.IOpenApiSchema?>(), Arg.Any<ApiSchemaContext>(), Arg.Any<string>())
             .Returns(ApiJsonSchemaAnalysis.Empty);
 
         foreach (var (schema, context, analysis) in mappings)
         {
             analyzer.Analyze(
-                Arg.Is<Microsoft.OpenApi.Models.Interfaces.IOpenApiSchema?>(candidate => ReferenceEquals(candidate, schema)),
+                Arg.Is<Microsoft.OpenApi.IOpenApiSchema?>(candidate => ReferenceEquals(candidate, schema)),
                 context,
                 Arg.Any<string>())
                 .Returns(analysis);

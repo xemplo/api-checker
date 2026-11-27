@@ -1,7 +1,5 @@
-using System.Reflection;
 using System.Text.Json.Nodes;
-using Microsoft.OpenApi.Any;
-using Microsoft.OpenApi.Models.Interfaces;
+using Microsoft.OpenApi;
 
 namespace Xemplo.ApiChecker.Core;
 
@@ -24,7 +22,8 @@ public sealed class ApiJsonSchemaAnalyzer : IApiJsonSchemaAnalyzer
             propertyName: null,
             inheritedUsage: ApiSchemaUsage.Included,
             required: ApiSchemaCondition.NotApplicable,
-            nodes);
+            nodes,
+            new HashSet<string>(StringComparer.Ordinal));
 
         return new ApiJsonSchemaAnalysis(nodes.OrderBy(static node => node.SchemaPath, StringComparer.Ordinal).ToArray());
     }
@@ -36,7 +35,8 @@ public sealed class ApiJsonSchemaAnalyzer : IApiJsonSchemaAnalyzer
         string? propertyName,
         ApiSchemaUsage inheritedUsage,
         ApiSchemaCondition required,
-        ICollection<ApiJsonSchemaNode> nodes)
+        ICollection<ApiJsonSchemaNode> nodes,
+        ISet<string> ancestorReferences)
     {
         var ambiguityReasons = GetAmbiguityReasons(schema, inheritedUsage);
         var usage = DetermineUsage(schema, context, inheritedUsage);
@@ -56,11 +56,13 @@ public sealed class ApiJsonSchemaAnalyzer : IApiJsonSchemaAnalyzer
             enumValues,
             ambiguityReasons));
 
-        if (HasOpaqueComposition(schema))
+        var referenceId = (schema as OpenApiSchemaReference)?.Reference.Id;
+        if (referenceId is not null && !ancestorReferences.Add(referenceId))
         {
             return;
         }
 
+        var childNodes = new List<ApiJsonSchemaNode>();
         var properties = GetProperties(schema);
         if (kind == ApiJsonSchemaNodeKind.Object && properties.Count > 0)
         {
@@ -78,7 +80,8 @@ public sealed class ApiJsonSchemaAnalyzer : IApiJsonSchemaAnalyzer
                     property.Key,
                     usage,
                     DetermineRequired(schema, property.Key, properties),
-                    nodes);
+                    childNodes,
+                    ancestorReferences);
             }
         }
 
@@ -92,8 +95,78 @@ public sealed class ApiJsonSchemaAnalyzer : IApiJsonSchemaAnalyzer
                 propertyName: null,
                 usage,
                 ApiSchemaCondition.NotApplicable,
-                nodes);
+                childNodes,
+                ancestorReferences);
         }
+
+        var ownPaths = childNodes.Select(static node => node.SchemaPath).ToHashSet(StringComparer.Ordinal);
+        childNodes.AddRange(AnalyzeUnionBranches(schema, context, schemaPath, propertyName, usage, required, ancestorReferences)
+            .Where(node => !ownPaths.Contains(node.SchemaPath)));
+
+        foreach (var childNode in childNodes)
+        {
+            nodes.Add(childNode);
+        }
+
+        if (referenceId is not null)
+        {
+            ancestorReferences.Remove(referenceId);
+        }
+    }
+
+    private static IEnumerable<ApiJsonSchemaNode> AnalyzeUnionBranches(
+        IOpenApiSchema schema,
+        ApiSchemaContext context,
+        string schemaPath,
+        string? propertyName,
+        ApiSchemaUsage usage,
+        ApiSchemaCondition required,
+        ISet<string> ancestorReferences)
+    {
+        var branchNodes = EnumerateAllOfSchemas(schema)
+            .SelectMany(static part => (part.OneOf ?? []).Concat(part.AnyOf ?? []))
+            .Where(static branch => branch is not null)
+            .Select(branch =>
+            {
+                var nodes = new List<ApiJsonSchemaNode>();
+                AnalyzeNode(branch, context, schemaPath, propertyName, usage, required, nodes, ancestorReferences);
+                return nodes.Where(node => node.SchemaPath != schemaPath).ToArray();
+            })
+            .Where(static nodes => nodes.Length > 0)
+            .ToArray();
+
+        return branchNodes
+            .SelectMany(static nodes => nodes)
+            .GroupBy(static node => node.SchemaPath, StringComparer.Ordinal)
+            .Select(group => MergeBranchNodes(group.ToArray(), group.Count() == branchNodes.Length));
+    }
+
+    private static ApiJsonSchemaNode MergeBranchNodes(IReadOnlyList<ApiJsonSchemaNode> nodes, bool inEveryBranch)
+    {
+        var first = nodes[0];
+        var reasons = nodes.SelectMany(static node => node.AmbiguityReasons).Distinct(StringComparer.Ordinal).ToList();
+        if (!inEveryBranch)
+        {
+            reasons.Add("Field is not present in every oneOf/anyOf branch.");
+        }
+
+        return first with
+        {
+            Usage = Agree(nodes, static node => node.Usage, ApiSchemaUsage.Ambiguous),
+            Required = inEveryBranch ? Agree(nodes, static node => node.Required, ApiSchemaCondition.Ambiguous) : ApiSchemaCondition.Ambiguous,
+            Nullable = Agree(nodes, static node => node.Nullable, ApiSchemaCondition.Ambiguous),
+            HasDefault = Agree(nodes, static node => node.HasDefault, ApiSchemaCondition.Ambiguous),
+            EnumValues = nodes.Any(static node => node.EnumValues.Count == 0)
+                ? []
+                : nodes.SelectMany(static node => node.EnumValues).Distinct(StringComparer.Ordinal).ToArray(),
+            AmbiguityReasons = reasons
+        };
+    }
+
+    private static T Agree<T>(IReadOnlyList<ApiJsonSchemaNode> nodes, Func<ApiJsonSchemaNode, T> selector, T fallback)
+    {
+        var value = selector(nodes[0]);
+        return nodes.All(node => EqualityComparer<T>.Default.Equals(selector(node), value)) ? value : fallback;
     }
 
     private static ApiJsonSchemaNodeKind DetermineKind(IOpenApiSchema schema)
@@ -163,11 +236,6 @@ public sealed class ApiJsonSchemaAnalyzer : IApiJsonSchemaAnalyzer
             return ApiSchemaCondition.Ambiguous;
         }
 
-        if (TryGetNullableFlag(schema, out var nullableFromFlag))
-        {
-            return nullableFromFlag ? ApiSchemaCondition.True : ApiSchemaCondition.False;
-        }
-
         var typeText = schema.Type?.ToString();
         if (!string.IsNullOrWhiteSpace(typeText))
         {
@@ -202,7 +270,7 @@ public sealed class ApiJsonSchemaAnalyzer : IApiJsonSchemaAnalyzer
             return Array.Empty<string>();
         }
 
-        return schema.Enum.Cast<object>().Select(static value => SerializeAnyValue(value)).ToArray();
+        return schema.Enum.Select(static value => value is null ? "null" : SerializeJsonNode(value)).ToArray();
     }
 
     private static IReadOnlyList<string> GetAmbiguityReasons(IOpenApiSchema schema, ApiSchemaUsage inheritedUsage)
@@ -228,7 +296,7 @@ public sealed class ApiJsonSchemaAnalyzer : IApiJsonSchemaAnalyzer
             reasons.Add("Schema is both readOnly and writeOnly.");
         }
 
-        if (!TryGetNullableFlag(schema, out _) && string.IsNullOrWhiteSpace(schema.Type?.ToString()))
+        if (string.IsNullOrWhiteSpace(schema.Type?.ToString()))
         {
             reasons.Add("Schema nullability is not explicit.");
         }
@@ -339,36 +407,6 @@ public sealed class ApiJsonSchemaAnalyzer : IApiJsonSchemaAnalyzer
         var typeText = schema.Type?.ToString();
         return !string.IsNullOrWhiteSpace(typeText)
             && typeText.Contains(token, StringComparison.OrdinalIgnoreCase);
-    }
-
-    private static bool TryGetNullableFlag(IOpenApiSchema schema, out bool value)
-    {
-        value = false;
-
-        var nullableProperty = schema.GetType().GetProperty("Nullable", BindingFlags.Public | BindingFlags.Instance);
-        if (nullableProperty is null)
-        {
-            return false;
-        }
-
-        var rawValue = nullableProperty.GetValue(schema);
-        if (rawValue is bool booleanValue)
-        {
-            value = booleanValue;
-            return true;
-        }
-
-        return false;
-    }
-
-    private static string SerializeAnyValue(object value)
-    {
-        return value switch
-        {
-            JsonNode jsonNode => SerializeJsonNode(jsonNode),
-            OpenApiAny anyValue => anyValue.Node?.ToJsonString() ?? anyValue.ToString() ?? string.Empty,
-            _ => value.ToString() ?? string.Empty
-        };
     }
 
     private static string SerializeJsonNode(JsonNode jsonNode)

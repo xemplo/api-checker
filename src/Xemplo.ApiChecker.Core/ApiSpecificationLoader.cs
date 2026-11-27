@@ -1,6 +1,6 @@
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
-using Microsoft.OpenApi.Models;
+using Microsoft.OpenApi;
 using Microsoft.OpenApi.Reader;
 using YamlDotNet.Serialization;
 
@@ -69,7 +69,7 @@ public sealed class ApiSpecificationLoader : IApiSpecificationLoader
                 LoadExternalRefs = false
             };
             var reader = new OpenApiJsonReader();
-            var readResult = reader.Read(jsonNode, readerSettings);
+            var readResult = reader.Read(jsonNode, new Uri(OpenApiConstants.BaseRegistryUri), readerSettings);
 
             if (readResult.Diagnostic?.Errors.Count > 0)
             {

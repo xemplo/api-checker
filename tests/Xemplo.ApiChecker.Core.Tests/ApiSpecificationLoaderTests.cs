@@ -1,6 +1,6 @@
 using System.Net;
 using System.Net.Http;
-using Microsoft.OpenApi.Models;
+using Microsoft.OpenApi;
 using Xemplo.ApiChecker.Core;
 
 namespace Xemplo.ApiChecker.Core.Tests;
@@ -568,7 +568,7 @@ public class ApiSpecificationLoaderTests
 
             var getOperation = pathItem.Value.Operations![System.Net.Http.HttpMethod.Get];
             Assert.NotNull(getOperation);
-            Assert.Contains(getOperation!.Parameters ?? [], static parameter => parameter.In == Microsoft.OpenApi.Models.ParameterLocation.Query && parameter.Name == "includeDeleted");
+            Assert.Contains(getOperation!.Parameters ?? [], static parameter => parameter.In == Microsoft.OpenApi.ParameterLocation.Query && parameter.Name == "includeDeleted");
         }
         finally
         {

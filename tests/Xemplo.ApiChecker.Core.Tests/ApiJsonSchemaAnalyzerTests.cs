@@ -1,5 +1,5 @@
 using System.Text.Json.Nodes;
-using Microsoft.OpenApi.Models;
+using Microsoft.OpenApi;
 using Xemplo.ApiChecker.Core;
 
 namespace Xemplo.ApiChecker.Core.Tests;
@@ -106,7 +106,7 @@ public class ApiJsonSchemaAnalyzerTests
     }
 
     [Fact]
-    public void Analyze_CompositionMarksNodeAsAmbiguous()
+    public void Analyze_OneOf_MarksNodeAsAmbiguousAndTraversesBranches()
     {
         var analyzer = new ApiJsonSchemaAnalyzer();
         var composedSchema = new OpenApiSchema
@@ -124,7 +124,46 @@ public class ApiJsonSchemaAnalyzerTests
 
         Assert.Equal(ApiSchemaCondition.Ambiguous, node.Nullable);
         Assert.NotEmpty(node.AmbiguityReasons);
-        Assert.DoesNotContain(result.Nodes, static candidate => candidate.SchemaPath.Equals("$.payload.id", StringComparison.Ordinal));
+        Assert.Equal(ApiSchemaCondition.False, AssertNode(result, "$.payload.id").Required);
+    }
+
+    [Fact]
+    public void Analyze_AnyOf_MergesFieldsSharedByEveryBranch()
+    {
+        var analyzer = new ApiJsonSchemaAnalyzer();
+        var schema = new OpenApiSchema
+        {
+            AnyOf =
+            [
+                ObjectSchema(("id", ScalarSchema(), true), ("note", ScalarSchema(nullable: true), false), ("status", EnumSchema("A"), false)),
+                ObjectSchema(("id", ScalarSchema(), true), ("note", ScalarSchema(), false), ("status", EnumSchema("B"), false))
+            ]
+        };
+
+        var result = analyzer.Analyze(schema, ApiSchemaContext.Request);
+
+        Assert.Single(result.Nodes, static node => node.SchemaPath == "$.id");
+        Assert.Equal(ApiSchemaCondition.True, AssertNode(result, "$.id").Required);
+        Assert.Equal(ApiSchemaCondition.Ambiguous, AssertNode(result, "$.note").Nullable);
+        Assert.Equal(["A", "B"], AssertNode(result, "$.status").EnumValues);
+    }
+
+    [Fact]
+    public void Analyze_OneOfWithNullBranch_KeepsRequiredFromObjectBranch()
+    {
+        var analyzer = new ApiJsonSchemaAnalyzer();
+        var schema = new OpenApiSchema
+        {
+            OneOf =
+            [
+                new OpenApiSchema { Type = JsonSchemaType.Null },
+                ObjectSchema(("email", ScalarSchema(), true))
+            ]
+        };
+
+        var result = analyzer.Analyze(schema, ApiSchemaContext.Request);
+
+        Assert.Equal(ApiSchemaCondition.True, AssertNode(result, "$.email").Required);
     }
 
     [Fact]
@@ -209,7 +248,7 @@ public class ApiJsonSchemaAnalyzerTests
     {
         var schema = new OpenApiSchema
         {
-            Properties = new Dictionary<string, Microsoft.OpenApi.Models.Interfaces.IOpenApiSchema>(),
+            Properties = new Dictionary<string, Microsoft.OpenApi.IOpenApiSchema>(),
             Required = new HashSet<string>(StringComparer.Ordinal)
         };
 
@@ -250,53 +289,13 @@ public class ApiJsonSchemaAnalyzerTests
 
     private static OpenApiSchema ScalarSchema(bool readOnly = false, bool writeOnly = false, bool nullable = false, JsonNode? defaultValue = null)
     {
-        var schema = new OpenApiSchema
+        return new OpenApiSchema
         {
             ReadOnly = readOnly,
             WriteOnly = writeOnly,
-            Default = defaultValue
+            Default = defaultValue,
+            Type = nullable ? JsonSchemaType.String | JsonSchemaType.Null : null
         };
-
-        SetNullable(schema, nullable);
-        return schema;
     }
 
-    private static void SetNullable(OpenApiSchema schema, bool value)
-    {
-        var property = typeof(OpenApiSchema).GetProperty("Nullable");
-        if (property is not null)
-        {
-            if (property.PropertyType == typeof(bool))
-            {
-                property.SetValue(schema, value);
-                return;
-            }
-
-            if (property.PropertyType == typeof(bool?))
-            {
-                property.SetValue(schema, (bool?)value);
-                return;
-            }
-        }
-
-        if (!value)
-        {
-            return;
-        }
-
-        var typeProperty = typeof(OpenApiSchema).GetProperty("Type");
-        if (typeProperty?.PropertyType == typeof(string))
-        {
-            typeProperty.SetValue(schema, "string,null");
-            return;
-        }
-
-        if (typeProperty?.PropertyType.IsEnum == true)
-        {
-            var stringValue = Enum.Parse(typeProperty.PropertyType, "String", ignoreCase: true);
-            var nullValue = Enum.Parse(typeProperty.PropertyType, "Null", ignoreCase: true);
-            var combinedValue = Convert.ToUInt64(stringValue) | Convert.ToUInt64(nullValue);
-            typeProperty.SetValue(schema, Enum.ToObject(typeProperty.PropertyType, combinedValue));
-        }
-    }
 }
